@@ -1,0 +1,65 @@
+# Everything SlotFlow needs to run, and nothing it does not.
+#
+#     docker compose up -d
+#     cp .env.example .env && php artisan key:generate
+#     php artisan demo:seed --fresh
+#     php artisan serve && npm run dev
+#
+# PHP itself runs on the host — `artisan serve` and `vite` are faster and
+# easier to debug there, and a demo nobody can get running is a screenshot.
+# What is worth containerising is the stateful part.
+
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: slotflow-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ALLOW_EMPTY_PASSWORD: 'yes'
+      MYSQL_DATABASE: slotflow
+      MYSQL_ROOT_HOST: '%'
+    ports:
+      # 3307 on the host: most developers already have MySQL on 3306, and
+      # "port already allocated" on the first command is a bad first minute.
+      # Set DB_PORT=3307 in .env to use this one.
+      - '${DB_FORWARD_PORT:-3307}:3306'
+    volumes:
+      - slotflow-mysql:/var/lib/mysql
+      - ./docker/mysql/init:/docker-entrypoint-initdb.d
+    command:
+      # utf8mb4 everywhere, so a customer called Müller or মেহেদী round-trips.
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    healthcheck:
+      test: ['CMD', 'mysqladmin', 'ping', '-h', '127.0.0.1']
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  redis:
+    image: redis:7-alpine
+    container_name: slotflow-redis
+    restart: unless-stopped
+    ports:
+      - '${REDIS_FORWARD_PORT:-6379}:6379'
+    volumes:
+      - slotflow-redis:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  mailpit:
+    # Catches every outgoing mail and shows it at http://localhost:8025.
+    # Confirmation emails are easier to get right when you can see them.
+    image: axllent/mailpit:latest
+    container_name: slotflow-mailpit
+    restart: unless-stopped
+    ports:
+      - '1025:1025'
+      - '8025:8025'
+
+volumes:
+  slotflow-mysql:
+  slotflow-redis:
