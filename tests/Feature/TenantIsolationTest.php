@@ -65,3 +65,48 @@ it('does not leak across tenants through the API', function (): void {
         ->assertJsonCount(1, 'data')
         ->assertJsonPath('data.0.name', 'Salon service');
 });
+
+it('refuses a token whose tenant does not match the requested workspace', function (): void {
+    Sanctum::actingAs($this->salonOwner);
+
+    // Authenticated as the salon, asking for the clinic's workspace. Not a
+    // routing quirk — someone probing. Refused rather than silently corrected.
+    $this->getJson('/api/v1/services', ['X-Tenant' => $this->clinic->tenant->slug])
+        ->assertForbidden();
+});
+
+it('returns 404 rather than 403 for another tenant\'s record', function (): void {
+    app(TenantContext::class)->set($this->clinic->tenant);
+
+    $clinicBooking = Booking::factory()
+        ->startingAt(CarbonImmutable::parse('2026-06-15 10:00', 'Europe/Vienna'), 60)
+        ->create([
+            'tenant_id' => $this->clinic->tenant->id,
+            'service_id' => $this->clinic->service->id,
+            'staff_id' => $this->clinic->staff->id,
+        ]);
+
+    app(TenantContext::class)->forget();
+    Sanctum::actingAs($this->salonOwner);
+
+    // 404, not 403: confirming that a reference exists somewhere on the
+    // platform is itself a small leak.
+    $response = $this->getJson("/api/v1/bookings/{$clinicBooking->reference}");
+
+    $response->assertNotFound();
+    expect($response)->toHaveErrorCode('not_found');
+});
+
+it('scopes availability to the requesting tenant\'s services', function (): void {
+    // The clinic's service id, asked for with the salon's workspace header.
+    // It fails validation rather than 404-ing at the lookup, because the
+    // `exists` rule is tenant-scoped — see ScopesExistenceToTenant.
+    $response = $this->getJson(
+        "/api/v1/availability?service_id={$this->clinic->service->id}&date=2026-06-15&tz=Europe/Vienna",
+        ['X-Tenant' => $this->salon->tenant->slug],
+    );
+
+    $response->assertStatus(422);
+    expect($response)->toHaveErrorCode('validation_failed');
+    $response->assertJsonPath('error.fields.service_id.0', fn (string $m) => str_contains($m, 'service id'));
+});
