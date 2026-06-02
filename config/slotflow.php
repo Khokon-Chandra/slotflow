@@ -25,5 +25,9 @@ return [
         // Granularity of generated slots, in minutes. A 45 minute service on a
         // 15 minute grid yields 09:00, 09:15, 09:30 … not 09:00, 09:45.
         'slot_granularity_minutes' => 15,
+
+        // Cancellation window before start, in hours. Inside it the customer
+        // must contact the business instead of self-cancelling.
+        'cancellation_window_hours' => 12,
     ],
 ];
