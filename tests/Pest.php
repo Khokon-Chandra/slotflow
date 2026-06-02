@@ -23,3 +23,20 @@ use Tests\TestCase;
 pest()->extend(TestCase::class)
     ->use(RefreshDatabase::class)
     ->in('Feature');
+
+/*
+|------------------------------------------------------------------------------
+| Helpers
+|------------------------------------------------------------------------------
+*/
+
+/**
+ * The UTC instant for a wall-clock expression in a named zone.
+ *
+ * Written out because every availability assertion needs it, and inlining
+ * `CarbonImmutable::parse($s, $tz)->utc()` buries the thing being tested.
+ */
+function utcFrom(string $expression, string $timezone = 'Europe/Vienna'): CarbonImmutable
+{
+    return CarbonImmutable::parse($expression, $timezone)->utc();
+}
