@@ -85,3 +85,89 @@ it('offers slots in both shifts of a split day', function (): void {
 
     expect(localTimes(slotsFor($studio, '2026-06-11')))->toBe(['09:00', '14:00']);
 });
+
+it('subtracts an existing booking, including its buffer', function (): void {
+    $studio = (new StudioFactory(durationMinutes: 60, bufferMinutes: 15))
+        ->withHours([[4, '09:00', '13:00']]);
+
+    // Someone is booked 10:00–11:00, and their 15 minute turnaround blocks
+    // the diary until 11:15.
+    Booking::factory()
+        ->startingAt(CarbonImmutable::parse('2026-06-11 10:00', 'Europe/Vienna'), 60, 15)
+        ->create([
+            'tenant_id' => $studio->tenant->id,
+            'service_id' => $studio->service->id,
+            'staff_id' => $studio->staff->id,
+        ]);
+
+    $times = localTimes(slotsFor($studio, '2026-06-11'));
+
+    // Nothing inside the appointment or its buffer.
+    expect($times)->not->toContain('10:00');
+    expect($times)->not->toContain('11:00');
+
+    // The free time resumes the moment the turnaround ends.
+    expect($times)->toContain('11:15');
+
+    // And nothing at all before it. The 09:00–10:00 gap is exactly 60 minutes,
+    // which fits the appointment but not the 15 minutes of clearing up that
+    // has to follow it — so the gap is unbookable for this service. That is
+    // the point of a buffer: booking into it would leave no turnaround.
+    expect($times)->not->toContain('09:00');
+    expect($times[0])->toBe('11:15');
+});
+
+it('offers a gap that fits the appointment and its buffer', function (): void {
+    // The same shape as above, but the gap is 75 minutes rather than 60.
+    $studio = (new StudioFactory(durationMinutes: 60, bufferMinutes: 15))
+        ->withHours([[4, '09:00', '13:00']]);
+
+    Booking::factory()
+        ->startingAt(CarbonImmutable::parse('2026-06-11 10:15', 'Europe/Vienna'), 60, 15)
+        ->create([
+            'tenant_id' => $studio->tenant->id,
+            'service_id' => $studio->service->id,
+            'staff_id' => $studio->staff->id,
+        ]);
+
+    $times = localTimes(slotsFor($studio, '2026-06-11'));
+
+    expect($times)->toContain('09:00');
+    expect($times)->not->toContain('09:15');   // would finish clearing at 10:30
+});
+
+it('ignores cancelled and missed bookings when computing free time', function (): void {
+    $studio = (new StudioFactory(durationMinutes: 60))->withHours([[4, '09:00', '11:00']]);
+
+    foreach ([BookingStatus::Cancelled, BookingStatus::NoShow] as $status) {
+        Booking::factory()
+            ->startingAt(CarbonImmutable::parse('2026-06-11 09:00', 'Europe/Vienna'), 60)
+            ->status($status)
+            ->create([
+                'tenant_id' => $studio->tenant->id,
+                'service_id' => $studio->service->id,
+                'staff_id' => $studio->staff->id,
+            ]);
+    }
+
+    // The row is kept as history; the time is not.
+    expect(localTimes(slotsFor($studio, '2026-06-11')))->toContain('09:00');
+});
+
+it('subtracts time off', function (): void {
+    $studio = (new StudioFactory(durationMinutes: 60))->withHours([[4, '09:00', '13:00']]);
+
+    TimeOff::factory()->create([
+        'tenant_id' => $studio->tenant->id,
+        'staff_id' => $studio->staff->id,
+        'starts_at' => CarbonImmutable::parse('2026-06-11 10:00', 'Europe/Vienna')->utc(),
+        'ends_at' => CarbonImmutable::parse('2026-06-11 12:00', 'Europe/Vienna')->utc(),
+    ]);
+
+    $times = localTimes(slotsFor($studio, '2026-06-11'));
+
+    expect($times)->toContain('09:00');
+    expect($times)->not->toContain('10:00');
+    expect($times)->not->toContain('11:00');
+    expect($times)->toContain('12:00');
+});
