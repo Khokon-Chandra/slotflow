@@ -30,4 +30,19 @@ return [
         // must contact the business instead of self-cancelling.
         'cancellation_window_hours' => 12,
     ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Availability engine
+    |--------------------------------------------------------------------------
+    */
+
+    'availability' => [
+        // Hard ceiling on the number of days one /availability call may span.
+        'max_range_days' => 31,
+
+        // Cache computed slots for this many seconds. Invalidated on every
+        // booking, rule change and time-off change for the staff member.
+        'cache_ttl' => 60,
+    ],
 ];
