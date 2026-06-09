@@ -171,3 +171,37 @@ it('subtracts time off', function (): void {
     expect($times)->not->toContain('11:00');
     expect($times)->toContain('12:00');
 });
+
+it('respects the minimum notice period', function (): void {
+    $studio = (new StudioFactory(durationMinutes: 60))->withHours([[3, '00:00', '23:00']]);
+
+    $studio->tenant->update([
+        'settings' => ['booking' => ['min_notice_minutes' => 180, 'slot_granularity_minutes' => 15]],
+    ]);
+
+    // "Now" is 06:00 UTC = 08:00 Vienna, so nothing before 11:00 local.
+    $times = localTimes(slotsFor($studio, '2026-06-10'));
+
+    expect($times)->not->toContain('09:00');
+    expect($times[0])->toBe('11:00');
+});
+
+it('refuses to look further ahead than the booking horizon', function (): void {
+    $studio = (new StudioFactory(durationMinutes: 60))->openEveryDay();
+
+    $studio->tenant->update([
+        'settings' => ['booking' => ['max_advance_days' => 3, 'min_notice_minutes' => 0]],
+    ]);
+
+    expect(slotsFor($studio, '2026-06-30'))->toBe([]);
+});
+
+it('honours a rule that is not yet in force', function (): void {
+    $studio = new StudioFactory(durationMinutes: 60);
+
+    $studio->withHours([[4, '09:00', '12:00']]);
+    $studio->staff->availabilityRules()->update(['effective_from' => '2026-07-01']);
+
+    expect(slotsFor($studio, '2026-06-11'))->toBe([]);
+    expect(slotsFor($studio, '2026-07-02'))->not->toBe([]);
+});
