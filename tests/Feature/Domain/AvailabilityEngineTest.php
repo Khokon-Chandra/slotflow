@@ -205,3 +205,127 @@ it('honours a rule that is not yet in force', function (): void {
     expect(slotsFor($studio, '2026-06-11'))->toBe([]);
     expect(slotsFor($studio, '2026-07-02'))->not->toBe([]);
 });
+
+describe('timezones', function (): void {
+    it('renders the same instant in the caller\'s zone', function (): void {
+        $studio = (new StudioFactory(durationMinutes: 60))->withHours([[4, '09:00', '11:00']]);
+
+        $vienna = slotsFor($studio, '2026-06-11', tz: 'Europe/Vienna');
+        $dhaka = slotsFor($studio, '2026-06-11', tz: 'Asia/Dhaka');
+
+        // Same underlying instants…
+        expect($vienna[0]->startsAt->equalTo($dhaka[0]->startsAt))->toBeTrue();
+
+        // …different wall clocks. Vienna is UTC+2 in June, Dhaka UTC+6.
+        expect($vienna[0]->localStart()->format('H:i'))->toBe('09:00');
+        expect($dhaka[0]->localStart()->format('H:i'))->toBe('13:00');
+    });
+
+    it('interprets a staff member\'s hours in their own zone', function (): void {
+        // The business is in Vienna; this consultant works 09:00–13:00 Kolkata,
+        // which is 05:30–09:30 Vienna in June.
+        $studio = new StudioFactory(durationMinutes: 60);
+        $studio->staff->update(['timezone' => 'Asia/Kolkata']);
+        $studio->withHours([[4, '09:00', '13:00']]);
+
+        $times = localTimes(slotsFor($studio, '2026-06-11', tz: 'Europe/Vienna'));
+
+        expect($times[0])->toBe('05:30');
+        expect(end($times))->toBe('08:30');
+    });
+});
+
+describe('daylight saving', function (): void {
+    /*
+     * Both of these compare the transition day against an ordinary Sunday
+     * rather than asserting a hard-coded count. That keeps the test about the
+     * thing it is testing — the window really is an hour shorter, and really
+     * is an hour longer — instead of about the slot grid, which is configured
+     * elsewhere and may change.
+     *
+     * One hour on the 15 minute grid these studios use is four slots.
+     */
+
+    it('loses an hour on the day the clocks go forward', function (): void {
+        // 29 March 2026, Europe/Vienna: 02:00 jumps to 03:00, so a 01:00–05:00
+        // shift is three real hours.
+        $studio = new StudioFactory(durationMinutes: 60);
+        $studio->withHours([[0, '01:00', '05:00']]);   // Sundays
+
+        CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-03-15 00:00', 'UTC'));
+
+        $ordinary = count(slotsFor($studio, '2026-03-22'));
+        $transition = count(slotsFor($studio, '2026-03-29'));
+
+        expect($ordinary)->toBeGreaterThan(0);
+        expect($transition)->toBe($ordinary - 4);
+    });
+
+    it('gains an hour on the day the clocks go back', function (): void {
+        // 25 October 2026: 03:00 falls back to 02:00, so the shift is five hours.
+        $studio = new StudioFactory(durationMinutes: 60);
+        $studio->withHours([[0, '01:00', '05:00']]);
+
+        CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-10-11 00:00', 'UTC'));
+
+        $ordinary = count(slotsFor($studio, '2026-10-18'));
+        $transition = count(slotsFor($studio, '2026-10-25'));
+
+        expect($ordinary)->toBeGreaterThan(0);
+        expect($transition)->toBe($ordinary + 4);
+    });
+
+    it('keeps a slot on the correct side of the transition', function (): void {
+        // A 09:00 Vienna appointment is 07:00 UTC in winter and 06:00 UTC in
+        // summer. Getting this wrong is the classic booking-system bug.
+        $studio = new StudioFactory(durationMinutes: 60);
+        $studio->withHours([[0, '09:00', '11:00']]);
+
+        CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-03-15 00:00', 'UTC'));
+
+        $winter = slotsFor($studio, '2026-03-22');
+        $summer = slotsFor($studio, '2026-04-05');
+
+        expect($winter[0]->startsAt->format('H:i'))->toBe('08:00');   // UTC
+        expect($summer[0]->startsAt->format('H:i'))->toBe('07:00');   // UTC
+        expect($winter[0]->localStart()->format('H:i'))->toBe('09:00');
+        expect($summer[0]->localStart()->format('H:i'))->toBe('09:00');
+    });
+});
+
+it('aligns the grid to the local clock after an awkward gap', function (): void {
+    // A booking ending at 10:07 must not produce 10:07, 10:22, 10:37 …
+    $studio = (new StudioFactory(durationMinutes: 30))->withHours([[4, '09:00', '12:00']]);
+
+    Booking::factory()
+        ->startingAt(CarbonImmutable::parse('2026-06-11 09:00', 'Europe/Vienna'), 67)
+        ->create([
+            'tenant_id' => $studio->tenant->id,
+            'service_id' => $studio->service->id,
+            'staff_id' => $studio->staff->id,
+        ]);
+
+    $times = localTimes(slotsFor($studio, '2026-06-11'));
+
+    expect($times[0])->toBe('10:15');
+    foreach ($times as $time) {
+        expect((int) substr($time, 3) % 15)->toBe(0);
+    }
+});
+
+it('merges the diaries of everyone who performs the service', function (): void {
+    $studio = (new StudioFactory(durationMinutes: 120))->withHours([[4, '09:00', '11:00']]);
+    $colleague = $studio->addColleague();
+
+    $colleague->availabilityRules()->create([
+        'tenant_id' => $studio->tenant->id,
+        'weekday' => 4,
+        'starts_at' => '14:00',
+        'ends_at' => '16:00',
+    ]);
+
+    $slots = slotsFor($studio, '2026-06-11');
+
+    expect($slots)->toHaveCount(2);
+    expect(localTimes($slots))->toBe(['09:00', '14:00']);
+});
