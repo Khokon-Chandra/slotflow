@@ -75,3 +75,87 @@ Each free interval is walked on the tenant's slot granularity (15 minutes by def
 A candidate is offered only if its **whole blocking window** — duration plus buffer — fits inside the free interval.
 
 ---
+
+## Half-open intervals
+
+Every comparison in the system is `[start, end)`:
+
+```php
+$this->start->lessThan($other->end) && $this->end->greaterThan($other->start)
+```
+
+With closed intervals, 09:00–10:00 and 10:00–11:00 "overlap" at the shared instant, and you end up writing `>=` and `<=` inconsistently in three places until back-to-back appointments mysteriously stop being bookable. That is a quieter bug than double booking and loses just as much money.
+
+The same predicate appears in the SQL overlap check, so the read path and the write path cannot disagree:
+
+```sql
+WHERE starts_at < :candidate_end AND blocks_until > :candidate_start
+```
+
+---
+
+## Buffers
+
+A service has a `duration_minutes` and a `buffer_minutes`. The buffer is turnaround: cleaning the chair, writing notes, changing the room. It blocks the diary, is not shown to the customer, and is not billed.
+
+Bookings therefore store **two** end times:
+
+| Column | Means | Used by |
+|---|---|---|
+| `ends_at` | `starts_at + duration` | The confirmation the customer reads |
+| `blocks_until` | `ends_at + buffer` (snapshotted at booking time) | The diary and the overlap check |
+
+Two columns rather than one because they answer two different questions. Keeping the buffer out of `ends_at` means the confirmation email is honest; keeping it *in* a stored column means the double-booking check is one indexed SQL predicate instead of a PHP-side reconciliation the database cannot enforce.
+
+The buffer is a snapshot, so changing a service's turnaround does not retroactively shift appointments already in the diary — which is the correct behaviour, not a limitation.
+
+### Worked example
+
+A 60-minute service with a 15-minute buffer. Working hours 09:00–13:00. One appointment already at 10:00.
+
+```
+09:00                    10:00        11:00  11:15                    13:00
+  ├───────── free ─────────┤ booked      │ buffer │────── free ─────────┤
+  │◄──── 60 minutes ──────►│◄─ 60 min ──►│◄ 15m ─►│
+```
+
+The 09:00–10:00 gap is exactly sixty minutes. It fits the appointment — and not the fifteen minutes of clearing up that has to follow it. **So it is not offered.** The first bookable slot is 11:15.
+
+That is the buffer doing its job: booking into it would leave the staff member no turnaround. The behaviour is asserted directly in [`AvailabilityEngineTest`](../tests/Feature/Domain/AvailabilityEngineTest.php), alongside the case where the gap *is* 75 minutes and 09:00 is offered.
+
+---
+
+## Timezones
+
+Three timezones are in play at once, and conflating any two is a bug:
+
+| Zone | Where it comes from | What it governs |
+|---|---|---|
+| **Tenant** | `tenants.timezone` | The admin panel's clock; the business day boundary |
+| **Staff** | `staff.timezone` | How weekly rules are interpreted |
+| **Caller** | The required `tz` parameter | How slots are rendered back |
+
+The `tz` parameter is **required**, never sniffed from a header and never defaulted to the server's. A booking API that guesses the caller's timezone is a booking API that is occasionally an hour wrong and never says so.
+
+Only IANA identifiers are accepted. `+02:00` and `CEST` are rejected by [`ValidTimezone`](../app/Rules/ValidTimezone.php): an offset cannot express daylight saving, and an abbreviation is ambiguous — `CST` is three different zones. Both look like they work right up until the clocks change.
+
+Every slot carries both representations:
+
+```json
+{
+  "starts_at":       "2026-06-11T07:00:00+00:00",
+  "local_starts_at": "2026-06-11T09:00:00+02:00",
+  "local_time":      "09:00",
+  "timezone":        "Europe/Vienna"
+}
+```
+
+The instant is what the server compares; the local rendering is what a human reads. Sending only one is how a booking UI ends up an hour out.
+
+### The seeded case
+
+Bright Lane Studio is in `Europe/Vienna`. Dr. Priya Nair, its trichologist, works `Asia/Kolkata`, 09:00–13:00. In June that is 05:30–09:30 Vienna; in January, 04:30–08:30.
+
+She is in the seed data on purpose. A timezone bug that only appears across zones is a timezone bug you will ship.
+
+---
