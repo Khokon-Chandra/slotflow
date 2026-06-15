@@ -153,3 +153,41 @@ That last one matters most: below its confidence floor it asks rather than guess
 This is why the test suite needs no secret, why CI makes no network calls, and why an Anthropic outage degrades the product instead of breaking it. English is genuinely ambiguous — "next Tuesday" means different weeks to different people — so the parser searches *both* readings rather than picking one and being wrong half the time.
 
 ---
+
+## What is in here
+
+**Customer-facing**
+
+- Landing page with services and team, deep-linkable per service
+- Three-step booking flow: describe it in plain English → pick a real slot → confirm
+- Works entirely without the assistant — browsing services is always available
+- Confirmation page with a quotable reference (`BL-7Q4M2X`), self-service cancellation inside the window
+- Times rendered in the customer's own timezone, and confirmed in it
+
+**Business-facing**
+
+- Dashboard: today's diary, AI briefing, revenue, no-show rate, and what it cost
+- Diary with filters (status, staff, service, risk band, date range, free-text) and one-click status changes
+- Services with an AI copy drafter; team management; a weekly hours editor that understands lunch breaks and overnight shifts
+- Time off that reports conflicting bookings instead of silently cancelling them
+- An AI usage page: calls, tokens, latency, cache hits, failures and spend against a monthly budget
+
+**Platform**
+
+- 32 REST endpoints under `/api/v1`, one error envelope, generated OpenAPI 3.1
+- Multi-tenant from the first migration — global scope on read, auto-fill on write, explicit escape hatch
+- Sanctum tokens for API clients; the admin panel is a client of the same API over its session cookie
+- Roles enforced per record by policies, not just per route
+
+## Stack
+
+| | |
+|---|---|
+| **Backend** | Laravel 13.26, PHP 8.4, MySQL 8 |
+| **Frontend** | Vue 3.5 + Inertia 2, TypeScript, Tailwind CSS 4, Vite 8 |
+| **Auth** | Laravel Sanctum (bearer tokens + SPA session) |
+| **AI** | Anthropic PHP SDK, `claude-opus-5`, structured outputs |
+| **Quality** | Pest 4, PHPStan (larastan) level 5, Laravel Pint, GitHub Actions |
+| **Docs** | Scramble (OpenAPI 3.1 from the code), Postman collection |
+
+Roughly 8,500 lines of PHP across 102 files, 3,800 lines of TypeScript and Vue across 24 components, and 2,600 lines of tests.
