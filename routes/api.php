@@ -2,6 +2,10 @@
 
 declare(strict_types=1);
 
+use App\Http\Controllers\Api\V1\AuthController;
+use App\Http\Controllers\Api\V1\ServiceController;
+use App\Http\Controllers\Api\V1\StaffController;
+use Illuminate\Support\Facades\Route;
 
 /*
 |------------------------------------------------------------------------------
@@ -21,3 +25,22 @@ declare(strict_types=1);
 |
 */
 
+Route::prefix('v1')
+    ->middleware('tenant')
+    ->group(function (): void {
+
+        /*
+        | Public — no token required.
+        |
+        | Booking is public on purpose: making a customer create an account
+        | before they can make an appointment is the single easiest way to
+        | lose the booking.
+        */
+        Route::post('auth/register', [AuthController::class, 'register']);
+        Route::post('auth/login', [AuthController::class, 'login']);
+
+        Route::get('services', [ServiceController::class, 'index']);
+        Route::get('services/{service}', [ServiceController::class, 'show']);
+        Route::get('staff', [StaffController::class, 'index']);
+        Route::get('staff/{staff}', [StaffController::class, 'show']);
+    });
