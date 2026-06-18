@@ -26,6 +26,27 @@ pest()->extend(TestCase::class)
 
 /*
 |------------------------------------------------------------------------------
+| Expectations
+|------------------------------------------------------------------------------
+*/
+
+/**
+ * Assert a response carries this project's error envelope with a given
+ * machine-readable code — the part of the API contract clients branch on.
+ */
+expect()->extend('toHaveErrorCode', function (string $code) {
+    /** @var Illuminate\Testing\TestResponse $response */
+    $response = $this->value;
+    $payload = $response->json();
+
+    expect($payload)->toHaveKey('error.code');
+    expect($payload['error']['code'])->toBe($code);
+
+    return $this;
+});
+
+/*
+|------------------------------------------------------------------------------
 | Helpers
 |------------------------------------------------------------------------------
 */
