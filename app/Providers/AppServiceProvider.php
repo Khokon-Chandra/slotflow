@@ -4,11 +4,18 @@ declare(strict_types=1);
 
 namespace App\Providers;
 
+use App\Models\Booking;
+use App\Models\Service;
+use App\Models\Staff;
+use App\Policies\BookingPolicy;
+use App\Policies\ServicePolicy;
+use App\Policies\StaffPolicy;
 use App\Support\TenantContext;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
 
 final class AppServiceProvider extends ServiceProvider
@@ -33,5 +40,8 @@ final class AppServiceProvider extends ServiceProvider
         // `--force`, not a mistyped environment variable.
         DB::prohibitDestructiveCommands($this->app->isProduction());
 
+        Gate::policy(Booking::class, BookingPolicy::class);
+        Gate::policy(Service::class, ServicePolicy::class);
+        Gate::policy(Staff::class, StaffPolicy::class);
     }
 }
