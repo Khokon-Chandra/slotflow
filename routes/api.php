@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Http\Controllers\Api\V1\AuthController;
+use App\Http\Controllers\Api\V1\AvailabilityController;
 use App\Http\Controllers\Api\V1\ServiceController;
 use App\Http\Controllers\Api\V1\StaffController;
 use Illuminate\Support\Facades\Route;
@@ -43,4 +44,6 @@ Route::prefix('v1')
         Route::get('services/{service}', [ServiceController::class, 'show']);
         Route::get('staff', [StaffController::class, 'index']);
         Route::get('staff/{staff}', [StaffController::class, 'show']);
+
+        Route::get('availability', [AvailabilityController::class, 'index']);
     });
