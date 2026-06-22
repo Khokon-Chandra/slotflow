@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\AvailabilityController;
+use App\Http\Controllers\Api\V1\BookingController;
 use App\Http\Controllers\Api\V1\ServiceController;
 use App\Http\Controllers\Api\V1\StaffController;
 use Illuminate\Support\Facades\Route;
@@ -46,4 +47,24 @@ Route::prefix('v1')
         Route::get('staff/{staff}', [StaffController::class, 'show']);
 
         Route::get('availability', [AvailabilityController::class, 'index']);
+
+        Route::post('bookings', [BookingController::class, 'store']);
+        Route::get('bookings/{reference}', [BookingController::class, 'show'])
+            ->where('reference', '[A-Z0-9\-]+');
+
+        // The assistant reads; it never writes. Throttled harder than the rest
+        // because it is the only unauthenticated route that costs money.
+        Route::post('ai/booking-assistant', BookingAssistantController::class)
+            ->middleware('throttle:20,1');
+
+        /*
+        | Authenticated — any signed-in user.
+        */
+        Route::middleware('auth:sanctum')->group(function (): void {
+            Route::get('auth/me', [AuthController::class, 'me']);
+            Route::post('auth/logout', [AuthController::class, 'logout']);
+
+            Route::get('bookings', [BookingController::class, 'index']);
+            Route::patch('bookings/{booking}/cancel', [BookingController::class, 'cancel']);
+        });
     });
