@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\AvailabilityController;
+use App\Http\Controllers\Api\V1\AvailabilityRuleController;
 use App\Http\Controllers\Api\V1\BookingController;
 use App\Http\Controllers\Api\V1\ServiceController;
 use App\Http\Controllers\Api\V1\StaffController;
+use App\Http\Controllers\Api\V1\TimeOffController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -52,11 +54,6 @@ Route::prefix('v1')
         Route::get('bookings/{reference}', [BookingController::class, 'show'])
             ->where('reference', '[A-Z0-9\-]+');
 
-        // The assistant reads; it never writes. Throttled harder than the rest
-        // because it is the only unauthenticated route that costs money.
-        Route::post('ai/booking-assistant', BookingAssistantController::class)
-            ->middleware('throttle:20,1');
-
         /*
         | Authenticated — any signed-in user.
         */
@@ -66,5 +63,28 @@ Route::prefix('v1')
 
             Route::get('bookings', [BookingController::class, 'index']);
             Route::patch('bookings/{booking}/cancel', [BookingController::class, 'cancel']);
+        });
+
+        /*
+        | Admin — owners and staff.
+        */
+        Route::middleware(['auth:sanctum', 'admin'])->group(function (): void {
+            Route::post('services', [ServiceController::class, 'store']);
+            Route::put('services/{service}', [ServiceController::class, 'update']);
+            Route::delete('services/{service}', [ServiceController::class, 'destroy']);
+
+            Route::post('staff', [StaffController::class, 'store']);
+            Route::put('staff/{staff}', [StaffController::class, 'update']);
+            Route::delete('staff/{staff}', [StaffController::class, 'destroy']);
+
+            Route::get('staff/{staff}/availability-rules', [AvailabilityRuleController::class, 'index']);
+            Route::put('staff/{staff}/availability-rules', [AvailabilityRuleController::class, 'sync']);
+
+            Route::get('staff/{staff}/time-off', [TimeOffController::class, 'index']);
+            Route::post('staff/{staff}/time-off', [TimeOffController::class, 'store']);
+            Route::delete('staff/{staff}/time-off/{timeOff}', [TimeOffController::class, 'destroy']);
+
+
+
         });
     });
