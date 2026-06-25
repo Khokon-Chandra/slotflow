@@ -77,3 +77,67 @@ it('refuses a time outside working hours', function (): void {
     $response->assertStatus(409);
     expect($response)->toHaveErrorCode('slot_unavailable');
 });
+
+it('enforces the minimum notice period', function (): void {
+    $this->studio->tenant->update(['settings' => ['booking' => ['min_notice_minutes' => 240]]]);
+
+    $response = $this->postJson('/api/v1/bookings', [
+        ...$this->payload,
+        'starts_at' => CarbonImmutable::now()->addHour()->toIso8601String(),
+    ], $this->tenantHeader);
+
+    $response->assertStatus(422);
+    expect($response)->toHaveErrorCode('insufficient_notice');
+    $response->assertJsonPath('error.context.min_notice_minutes', 240);
+});
+
+it('refuses a booking beyond the horizon', function (): void {
+    $this->studio->tenant->update(['settings' => ['booking' => ['max_advance_days' => 7, 'min_notice_minutes' => 0]]]);
+
+    $response = $this->postJson('/api/v1/bookings', [
+        ...$this->payload,
+        'starts_at' => CarbonImmutable::now()->addDays(30)->setTime(10, 0)->toIso8601String(),
+    ], $this->tenantHeader);
+
+    $response->assertStatus(422);
+    expect($response)->toHaveErrorCode('beyond_booking_horizon');
+});
+
+it('refuses a staff member who does not perform the service', function (): void {
+    $outsider = App\Models\Staff::factory()->create(['tenant_id' => $this->studio->tenant->id]);
+
+    $response = $this->postJson(
+        '/api/v1/bookings',
+        [...$this->payload, 'staff_id' => $outsider->id],
+        $this->tenantHeader,
+    );
+
+    $response->assertStatus(422);
+    expect($response)->toHaveErrorCode('staff_service_mismatch');
+});
+
+describe('validation', function (): void {
+    it('rejects a missing timezone with a usable message', function (): void {
+        $payload = $this->payload;
+        unset($payload['customer_timezone']);
+
+        $response = $this->postJson('/api/v1/bookings', $payload, $this->tenantHeader);
+
+        $response->assertStatus(422);
+        expect($response)->toHaveErrorCode('validation_failed');
+        $response->assertJsonStructure(['error' => ['code', 'message', 'fields' => ['customer_timezone']]]);
+    });
+
+    it('rejects an offset masquerading as a timezone', function (): void {
+        // "+02:00" cannot express daylight saving. Accepting it looks like it
+        // works right up until the clocks change.
+        $this->postJson('/api/v1/bookings', [...$this->payload, 'customer_timezone' => '+02:00'], $this->tenantHeader)
+            ->assertStatus(422)
+            ->assertJsonPath('error.fields.customer_timezone.0', fn (string $m) => str_contains($m, 'IANA'));
+    });
+
+    it('rejects an abbreviation', function (): void {
+        $this->postJson('/api/v1/bookings', [...$this->payload, 'customer_timezone' => 'CEST'], $this->tenantHeader)
+            ->assertStatus(422);
+    });
+});
