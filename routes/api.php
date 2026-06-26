@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use App\Http\Controllers\Api\V1\Admin\AdminBookingController;
+use App\Http\Controllers\Api\V1\Admin\MetricsController;
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\AvailabilityController;
 use App\Http\Controllers\Api\V1\AvailabilityRuleController;
@@ -84,6 +86,11 @@ Route::prefix('v1')
             Route::post('staff/{staff}/time-off', [TimeOffController::class, 'store']);
             Route::delete('staff/{staff}/time-off/{timeOff}', [TimeOffController::class, 'destroy']);
 
+            Route::get('admin/bookings', [AdminBookingController::class, 'index']);
+            Route::patch('admin/bookings/{booking}/status', [AdminBookingController::class, 'updateStatus']);
+
+            Route::get('admin/metrics', [MetricsController::class, 'index']);
+            Route::get('admin/ai-usage', [MetricsController::class, 'aiUsage']);
 
 
         });
