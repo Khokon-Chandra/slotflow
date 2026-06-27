@@ -57,3 +57,54 @@ it('refuses a staff member: services belong to the owner', function (): void {
         'price_cents' => 100,
     ])->assertForbidden();
 });
+
+it('lets the owner create a service', function (): void {
+    Sanctum::actingAs($this->studio->owner());
+
+    $this->postJson('/api/v1/services', [
+        'name' => 'Deep conditioning',
+        'duration_minutes' => 30,
+        'price_cents' => 3200,
+        'staff_ids' => [$this->studio->staff->id],
+    ])
+        ->assertCreated()
+        ->assertJsonPath('data.slug', 'deep-conditioning')
+        ->assertJsonCount(1, 'data.staff');
+});
+
+it('lets a staff member manage their own hours but not a colleague\'s', function (): void {
+    $colleague = $this->studio->addColleague();
+
+    Sanctum::actingAs($this->studio->staffUser());
+
+    $payload = ['rules' => [['weekday' => 1, 'starts_at' => '10:00', 'ends_at' => '16:00']]];
+
+    $this->putJson("/api/v1/staff/{$this->studio->staff->id}/availability-rules", $payload)->assertOk();
+    $this->putJson("/api/v1/staff/{$colleague->id}/availability-rules", $payload)->assertForbidden();
+});
+
+it('refuses to delete a service with bookings ahead of it', function (): void {
+    Sanctum::actingAs($this->studio->owner());
+
+    App\Models\Booking::factory()
+        ->startingAt(CarbonImmutable::parse('2026-06-20 10:00', 'Europe/Vienna'), 60)
+        ->create([
+            'tenant_id' => $this->studio->tenant->id,
+            'service_id' => $this->studio->service->id,
+            'staff_id' => $this->studio->staff->id,
+        ]);
+
+    $response = $this->deleteJson("/api/v1/services/{$this->studio->service->slug}");
+
+    $response->assertStatus(409);
+    expect($response)->toHaveErrorCode('service_has_bookings');
+    expect(Service::query()->count())->toBe(1);
+});
+
+it('deletes a service nobody is booked into', function (): void {
+    Sanctum::actingAs($this->studio->owner());
+
+    $this->deleteJson("/api/v1/services/{$this->studio->service->slug}")->assertNoContent();
+
+    expect(Service::query()->count())->toBe(0);
+});
