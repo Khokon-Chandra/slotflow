@@ -84,3 +84,59 @@ The last column is the point. A decision without a stated reversal condition is 
 **What would change it.** Nothing about model quality. This is not a hedge against models being bad at things — it is about which decisions should be reproducible and auditable. Charging someone a deposit is one of them.
 
 ---
+
+## 5 · Every AI task has a deterministic fallback
+
+**Status** Accepted
+
+**Context.** A portfolio project that needs an API key is a screenshot. A production feature that needs a third party to be up is a liability.
+
+**Decision.** `AiClient` has two implementations. `AI_DRIVER=auto` picks Claude when a key exists and the heuristic otherwise, and the manager falls back on rate limit, budget exhaustion, timeout or error.
+
+**Consequences.** The fallback is real work — a date parser, a keyword matcher, four templates — and it has to be maintained. In exchange: the demo runs from a clone, CI needs no secret and makes no network call, and an outage degrades the product instead of breaking it.
+
+**What would change it.** Nothing. This one is load-bearing.
+
+---
+
+## 6 · The admin panel is a client of the public API
+
+**Status** Accepted
+
+**Considered.** Dedicated Inertia endpoints for the panel, and `/api/v1` for third parties.
+
+**Rejected because** two APIs means two sets of bugs, and the public one gets tested least. The one your own product does not use is the one that rots.
+
+**Decision.** Inertia controllers render initial page props; everything interactive afterwards calls `/api/v1` with the session cookie (`statefulApi()`).
+
+**Consequences.** If a response shape is awkward for us, it is awkward for third parties, and we find out immediately rather than in a support ticket. Costs one round trip on first interaction.
+
+**What would change it.** A page whose data needs cannot be expressed in the public API without contorting it. That would be a signal about the API, not about the page.
+
+---
+
+## 7 · Policies answer "who", enums answer "what"
+
+**Status** Accepted
+
+**Context.** `BookingPolicy::update()` originally refused terminal bookings, which felt tidy.
+
+**It was wrong.** A client attempting an illegal transition got `403` — "you are not allowed" — when the truth was "that is not a thing". And it hid the useful part of the answer.
+
+**Decision.** Policies check role, ownership and tenancy. `BookingStatus` owns the transition table. `BookingService::transition()` raises `422 invalid_booking_transition` with `context.allowed`.
+
+**Consequences.** Two checks instead of one, and clients can tell an authorisation problem from a state problem. Caught by a test that expected 422 and got 403.
+
+---
+
+## 8 · One error envelope
+
+**Status** Accepted
+
+**Context.** Laravel returns `{message, errors}` for validation, `{message}` for a missing model, and something else for everything else. Clients write three parsers and get the third one wrong.
+
+**Decision.** Every JSON error is `{ "error": { "code", "message", "context"? , "fields"? } }`. `code` is a stable identifier; changing one is a breaking change. Domain failures render themselves.
+
+**Consequences.** Some framework-shaped code in `bootstrap/app.php`. In exchange, a client branches on one field, and a taken slot is a `409` with `slot_unavailable` rather than a 500. Locked in by [`ErrorEnvelopeTest`](../tests/Feature/Api/ErrorEnvelopeTest.php).
+
+---
