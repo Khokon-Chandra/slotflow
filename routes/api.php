@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Http\Controllers\Api\V1\Admin\AdminBookingController;
 use App\Http\Controllers\Api\V1\Admin\MetricsController;
+use App\Http\Controllers\Api\V1\Ai\RiskController;
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\AvailabilityController;
 use App\Http\Controllers\Api\V1\AvailabilityRuleController;
@@ -93,5 +94,6 @@ Route::prefix('v1')
             Route::get('admin/ai-usage', [MetricsController::class, 'aiUsage']);
 
 
+            Route::get('bookings/{booking}/risk', RiskController::class);
         });
     });
