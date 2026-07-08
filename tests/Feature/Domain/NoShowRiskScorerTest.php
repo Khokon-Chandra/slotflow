@@ -144,3 +144,64 @@ it('penalises a booking with no way to send a reminder', function (): void {
     expect($without->score)->toBeGreaterThan($withPhone->score);
     expect(factorCodes($without))->toContain('no_phone');
 });
+
+it('weights the time of day in the customer\'s own clock', function (): void {
+    $customer = Customer::factory()->create(['tenant_id' => $this->studio->tenant->id]);
+
+    $early = $this->scorer->score(bookingFor($this->studio, $customer, '2026-06-15 08:00'));
+    $midday = $this->scorer->score(bookingFor($this->studio, $customer, '2026-06-15 14:00'));
+
+    expect(factorCodes($early))->toContain('early_slot');
+    expect(factorCodes($midday))->not->toContain('early_slot');
+    expect($early->score)->toBeGreaterThan($midday->score);
+});
+
+it('treats a very long lead time as a risk and a comfortable one as protective', function (): void {
+    $customer = Customer::factory()->loyal()->create(['tenant_id' => $this->studio->tenant->id]);
+
+    $farOut = $this->scorer->score(bookingFor($this->studio, $customer, '2026-08-01 14:00', bookedDaysAgo: 0));
+    $soon = $this->scorer->score(bookingFor($this->studio, $customer, '2026-06-13 14:00', bookedDaysAgo: 0));
+
+    expect(factorCodes($farOut))->toContain('very_long_lead');
+    expect(factorCodes($soon))->toContain('healthy_lead');
+    expect($farOut->score)->toBeGreaterThan($soon->score);
+});
+
+it('reduces the score when a deposit is held', function (): void {
+    $customer = Customer::factory()->create(['tenant_id' => $this->studio->tenant->id]);
+
+    $baseline = $this->scorer->score(bookingFor($this->studio, $customer, '2026-06-15 14:00'));
+
+    $this->studio->service->update(['requires_deposit' => true, 'deposit_cents' => 2000]);
+
+    $withDeposit = $this->scorer->score(
+        bookingFor($this->studio, $customer, '2026-06-15 14:00')->fresh(['service', 'customer'])
+    );
+
+    expect($withDeposit->score)->toBeLessThan($baseline->score);
+    expect(factorCodes($withDeposit))->toContain('deposit_taken');
+});
+
+it('never scores outside 0 to 100', function (): void {
+    $worst = Customer::factory()->unreachable()->create([
+        'tenant_id' => $this->studio->tenant->id,
+        'completed_count' => 0,
+        'no_show_count' => 9,
+        'cancelled_count' => 9,
+    ]);
+
+    $best = Customer::factory()->create([
+        'tenant_id' => $this->studio->tenant->id,
+        'completed_count' => 40,
+        'no_show_count' => 0,
+        'phone' => '+43 1 1',
+    ]);
+
+    $this->studio->service->update(['requires_deposit' => true, 'deposit_cents' => 5000]);
+
+    $high = $this->scorer->score(bookingFor($this->studio, $worst, '2026-08-03 08:00', bookedDaysAgo: 0));
+    $low = $this->scorer->score(bookingFor($this->studio, $best, '2026-06-13 14:00', bookedDaysAgo: 0)->fresh(['service', 'customer']));
+
+    expect($high->score)->toBeLessThanOrEqual(100)->toBeGreaterThanOrEqual(0);
+    expect($low->score)->toBeLessThanOrEqual(100)->toBeGreaterThanOrEqual(0);
+});
