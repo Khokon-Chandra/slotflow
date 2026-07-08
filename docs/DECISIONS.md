@@ -140,3 +140,59 @@ The last column is the point. A decision without a stated reversal condition is 
 **Consequences.** Some framework-shaped code in `bootstrap/app.php`. In exchange, a client branches on one field, and a taken slot is a `409` with `slot_unavailable` rather than a 500. Locked in by [`ErrorEnvelopeTest`](../tests/Feature/Api/ErrorEnvelopeTest.php).
 
 ---
+
+## 9 · Tests run against MySQL, not SQLite
+
+**Status** Accepted
+
+**Context.** SQLite in memory is much faster and the default in a new Laravel app.
+
+**Rejected because** SQLite has no `SELECT … FOR UPDATE`. The double-booking guard is the most important behaviour in this application, and on SQLite the test would pass without testing anything. A suite that runs on a database missing the feature under test passes for the wrong reason.
+
+**Decision.** MySQL for the whole suite, in CI too.
+
+**Consequences.** CI needs a service container and the suite takes 4 seconds instead of 1. Both are cheap. It also means every migration, index and constraint is exercised on the engine that will run in production.
+
+---
+
+## 10 · The buffer is stored, not derived
+
+**Status** Accepted
+
+**Context.** A booking blocks `duration + buffer`, but the customer is told `duration`.
+
+**Considered.** Store `ends_at` only and add the buffer at query time.
+
+**Rejected because** the overlap check then cannot be a single SQL predicate: it needs the service's current buffer joined in, and every comparison becomes PHP-side reconciliation the database cannot enforce. The one check that must be exactly right becomes the one the database cannot help with.
+
+**Decision.** Store both `ends_at` and `blocks_until`, snapshotting the buffer at booking time.
+
+**Consequences.** One denormalised column. Changing a service's buffer does not retroactively shift existing appointments — which is correct behaviour, not a limitation.
+
+---
+
+## 11 · `Model::shouldBeStrict()` in local
+
+**Status** Accepted
+
+**Decision.** Lazy loading, silently discarded attributes and missing attributes are exceptions in development.
+
+**Consequences.** It caught two genuine N+1s while this was being built — one in `ServiceResource` reading `$service->tenant->currency` per row, one in the admin diary. Both were invisible on six seeded services and would have been fatal at fifty thousand bookings.
+
+It also forces honesty about eager loading: `with()` calls are mandatory rather than aspirational. The one place strictness is disabled is `demo:bench`, which deliberately measures the N+1 it prevents — 5 queries against 101 on the same page.
+
+---
+
+## 12 · The risk weights are illustrative, and say so
+
+**Status** Accepted, with a stated caveat
+
+**Context.** The scorer assigns points per factor: prior no-show rate, lead time, time of day, whether a deposit is held, whether a phone number exists.
+
+**These are not fitted to data.** They were chosen to be explainable, and they are documented as such in the code, in the admin UI and in the README.
+
+**Why not fit them.** There is no data to fit them to — the history is seeded and invented. A model trained on invented data would be a more impressive-looking lie.
+
+**Consequences.** The feature is honest about what it is: a transparent heuristic whose arithmetic ships with the answer, so the owner can disagree with it. That is the only way they will ever come to rely on it.
+
+**What would change it.** Real history. On a live deployment these weights are the first thing you would replace — logistic regression over a year of outcomes, with the factor breakdown kept, because the explanation is most of the value.
