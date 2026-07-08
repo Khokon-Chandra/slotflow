@@ -141,3 +141,71 @@ describe('validation', function (): void {
             ->assertStatus(422);
     });
 });
+
+it('records how the booking was made', function (): void {
+    $this->postJson('/api/v1/bookings', $this->payload, $this->tenantHeader)->assertCreated();
+
+    expect(Booking::query()->withoutTenantScope()->sole()->source)->toBe(BookingSource::Web);
+});
+
+it('scores the booking for no-show risk as it is created', function (): void {
+    $this->postJson('/api/v1/bookings', $this->payload, $this->tenantHeader)->assertCreated();
+
+    $booking = Booking::query()->withoutTenantScope()->with('riskAssessment')->sole();
+
+    expect($booking->riskAssessment)->not->toBeNull();
+    expect($booking->riskAssessment->score)->toBeGreaterThanOrEqual(0);
+});
+
+it('reuses an existing customer so their history survives', function (): void {
+    $this->postJson('/api/v1/bookings', $this->payload, $this->tenantHeader)->assertCreated();
+
+    $this->postJson('/api/v1/bookings', [
+        ...$this->payload,
+        'starts_at' => CarbonImmutable::parse('2026-06-12 09:00', 'Europe/Vienna')->toIso8601String(),
+    ], $this->tenantHeader)->assertCreated();
+
+    expect(App\Models\Customer::query()->withoutTenantScope()->count())->toBe(1);
+});
+
+describe('reading a booking', function (): void {
+    it('lets a guest read their own booking with the email they used', function (): void {
+        $reference = $this->postJson('/api/v1/bookings', $this->payload, $this->tenantHeader)
+            ->json('data.reference');
+
+        $this->getJson("/api/v1/bookings/{$reference}?email=ada@example.test", $this->tenantHeader)
+            ->assertOk()
+            ->assertJsonPath('data.reference', $reference);
+    });
+
+    it('will not hand a booking to someone with only the reference', function (): void {
+        $reference = $this->postJson('/api/v1/bookings', $this->payload, $this->tenantHeader)
+            ->json('data.reference');
+
+        $this->getJson("/api/v1/bookings/{$reference}", $this->tenantHeader)->assertNotFound();
+        $this->getJson("/api/v1/bookings/{$reference}?email=guess@example.test", $this->tenantHeader)
+            ->assertNotFound();
+    });
+
+    it('hides customer details from unauthenticated readers', function (): void {
+        $reference = $this->postJson('/api/v1/bookings', $this->payload, $this->tenantHeader)
+            ->json('data.reference');
+
+        $this->getJson("/api/v1/bookings/{$reference}?email=ada@example.test", $this->tenantHeader)
+            ->assertOk()
+            ->assertJsonMissingPath('data.customer')
+            ->assertJsonMissingPath('data.risk');
+    });
+
+    it('shows customer details and risk to the business', function (): void {
+        $reference = $this->postJson('/api/v1/bookings', $this->payload, $this->tenantHeader)
+            ->json('data.reference');
+
+        Sanctum::actingAs($this->studio->owner());
+
+        $this->getJson("/api/v1/bookings/{$reference}")
+            ->assertOk()
+            ->assertJsonPath('data.customer.email', 'ada@example.test')
+            ->assertJsonStructure(['data' => ['risk' => ['score', 'band', 'factors', 'generated_by']]]);
+    });
+});
