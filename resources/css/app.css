@@ -1,0 +1,142 @@
+@import 'tailwindcss';
+
+/*
+| -----------------------------------------------------------------------------
+| Design tokens
+| -----------------------------------------------------------------------------
+|
+| One palette, defined once, used by every component. Light is the base; the
+| dark block below redefines only the tokens, so no component ever has to
+| carry a `dark:` variant for colour. Adding a third theme later means adding
+| one block here, not touching forty files.
+*/
+
+@theme {
+    --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+
+    --color-ink: oklch(0.21 0.02 264);
+    --color-ink-muted: oklch(0.48 0.015 264);
+    --color-ink-subtle: oklch(0.62 0.012 264);
+    --color-surface: oklch(1 0 0);
+    --color-surface-raised: oklch(0.99 0.002 264);
+    --color-surface-sunken: oklch(0.975 0.004 264);
+    --color-line: oklch(0.92 0.005 264);
+    --color-line-strong: oklch(0.86 0.008 264);
+
+    --color-brand: oklch(0.55 0.19 274);
+    --color-brand-soft: oklch(0.955 0.02 274);
+    --color-brand-strong: oklch(0.47 0.2 274);
+    --color-brand-ink: oklch(0.99 0 0);
+
+    --color-positive: oklch(0.62 0.14 158);
+    --color-positive-soft: oklch(0.96 0.03 158);
+    --color-warning: oklch(0.72 0.15 70);
+    --color-warning-soft: oklch(0.97 0.04 82);
+    --color-critical: oklch(0.6 0.2 24);
+    --color-critical-soft: oklch(0.96 0.03 24);
+
+    --radius-panel: 0.875rem;
+}
+
+@layer base {
+    :root {
+        color-scheme: light;
+    }
+
+    html.dark {
+        color-scheme: dark;
+
+        --color-ink: oklch(0.96 0.004 264);
+        --color-ink-muted: oklch(0.72 0.012 264);
+        --color-ink-subtle: oklch(0.58 0.014 264);
+        --color-surface: oklch(0.185 0.014 264);
+        --color-surface-raised: oklch(0.225 0.016 264);
+        --color-surface-sunken: oklch(0.155 0.014 264);
+        --color-line: oklch(0.3 0.016 264);
+        --color-line-strong: oklch(0.38 0.018 264);
+
+        --color-brand: oklch(0.7 0.16 274);
+        --color-brand-soft: oklch(0.29 0.06 274);
+        --color-brand-strong: oklch(0.78 0.15 274);
+        --color-brand-ink: oklch(0.16 0.02 274);
+
+        --color-positive: oklch(0.72 0.14 158);
+        --color-positive-soft: oklch(0.28 0.05 158);
+        --color-warning: oklch(0.79 0.14 78);
+        --color-warning-soft: oklch(0.3 0.05 70);
+        --color-critical: oklch(0.7 0.17 24);
+        --color-critical-soft: oklch(0.3 0.06 24);
+    }
+
+    * {
+        border-color: var(--color-line);
+    }
+
+    body {
+        background-color: var(--color-surface-sunken);
+        color: var(--color-ink);
+        -webkit-font-smoothing: antialiased;
+        text-rendering: optimizeLegibility;
+    }
+
+    /* Visible, consistent focus. Removing outlines makes a form unusable by
+       keyboard, and "it looks cleaner" is not worth that trade. */
+    :focus-visible {
+        outline: 2px solid var(--color-brand);
+        outline-offset: 2px;
+        border-radius: 0.25rem;
+    }
+
+    /* Tabular figures everywhere a number sits in a column, so digits line up
+       and a table of times does not shimmer as it updates. */
+    .tnum {
+        font-variant-numeric: tabular-nums;
+    }
+}
+
+@layer components {
+    .panel {
+        background-color: var(--color-surface);
+        border: 1px solid var(--color-line);
+        border-radius: var(--radius-panel);
+    }
+
+    .field {
+        width: 100%;
+        border-radius: 0.625rem;
+        border: 1px solid var(--color-line-strong);
+        background-color: var(--color-surface);
+        padding: 0.5rem 0.75rem;
+        font-size: 0.875rem;
+        color: var(--color-ink);
+        transition: border-color 120ms ease, box-shadow 120ms ease;
+    }
+
+    .field::placeholder {
+        color: var(--color-ink-subtle);
+    }
+
+    .field:focus {
+        outline: none;
+        border-color: var(--color-brand);
+        box-shadow: 0 0 0 3px color-mix(in oklch, var(--color-brand) 18%, transparent);
+    }
+
+    .field:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+    }
+}
+
+/* Respect the system setting. An animation that cannot be turned off is an
+   accessibility bug, not a flourish. */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
+}
