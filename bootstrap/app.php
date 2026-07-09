@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Http\Middleware\EnsureAdminAccess;
+use App\Http\Middleware\HandleInertiaRequests;
 use App\Http\Middleware\ResolveTenant;
 use App\Support\ApiErrors;
 use Illuminate\Auth\Access\AuthorizationException;
@@ -11,6 +12,7 @@ use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
@@ -24,6 +26,18 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        $middleware->web(append: [
+            HandleInertiaRequests::class,
+            AddLinkHeadersForPreloadedAssets::class,
+        ]);
+
+        // Lets the Inertia admin panel call /api/v1 with its session cookie
+        // instead of minting a token for its own backend. The admin panel is
+        // then a client of the same public API everyone else uses, which is
+        // the cheapest way to keep that API honest — if it is awkward for us,
+        // it is awkward for them.
+        $middleware->statefulApi();
+
         $middleware->alias([
             'tenant' => ResolveTenant::class,
             'admin' => EnsureAdminAccess::class,
