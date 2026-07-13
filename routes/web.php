@@ -2,6 +2,9 @@
 
 declare(strict_types=1);
 
+use App\Http\Controllers\Web\PublicController;
+use App\Http\Middleware\ResolveDemoTenant;
+use Illuminate\Support\Facades\Route;
 
 /*
 |------------------------------------------------------------------------------
@@ -13,3 +16,7 @@ declare(strict_types=1);
 |
 */
 
+Route::middleware(ResolveDemoTenant::class)->group(function (): void {
+
+    Route::get('/', [PublicController::class, 'home'])->name('home');
+});
