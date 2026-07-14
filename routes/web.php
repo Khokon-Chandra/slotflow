@@ -19,4 +19,9 @@ use Illuminate\Support\Facades\Route;
 Route::middleware(ResolveDemoTenant::class)->group(function (): void {
 
     Route::get('/', [PublicController::class, 'home'])->name('home');
+    Route::get('/book', [PublicController::class, 'book'])->name('book');
+    Route::get('/booking/{reference}', [PublicController::class, 'confirmation'])
+        ->where('reference', '[A-Z0-9\-]+')
+        ->name('booking.show');
+
 });
