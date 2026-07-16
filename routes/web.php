@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Http\Controllers\Web\AdminController;
 use App\Http\Controllers\Web\PublicController;
 use App\Http\Controllers\Web\WebAuthController;
 use App\Http\Middleware\ResolveDemoTenant;
@@ -34,4 +35,12 @@ Route::middleware(ResolveDemoTenant::class)->group(function (): void {
         ->middleware('auth')
         ->name('logout');
 
+    Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(function (): void {
+        Route::get('/', [AdminController::class, 'dashboard'])->name('dashboard');
+        Route::get('/bookings', [AdminController::class, 'bookings'])->name('bookings');
+        Route::get('/services', [AdminController::class, 'services'])->name('services');
+        Route::get('/team', [AdminController::class, 'team'])->name('team');
+        Route::get('/team/{staff}/hours', [AdminController::class, 'availability'])->name('availability');
+        Route::get('/settings', [AdminController::class, 'settings'])->name('settings');
+    });
 });
