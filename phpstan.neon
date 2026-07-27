@@ -1,0 +1,35 @@
+includes:
+    - vendor/larastan/larastan/extension.neon
+
+parameters:
+    level: 5
+
+    paths:
+        - app
+        - config
+        - database
+        - routes
+
+    # Eloquent's magic makes a few patterns unprovable to a static analyser
+    # without either weakening the level everywhere or scattering ignores
+    # through the code. These are the narrow, deliberate exceptions.
+    ignoreErrors:
+        # Query builder chains on models resolve to Builder<static>, which the
+        # extension cannot always follow through custom #[Scope] attributes.
+        - identifier: method.notFound
+          path: app/Models/*
+
+        - '#Call to an undefined method Illuminate\\Database\\Eloquent\\(Builder|Relations\\[a-zA-Z]+)#'
+
+        # Dynamic model attributes on aggregate query results.
+        - '#Access to an undefined property Illuminate\\Database\\Eloquent\\Model::#'
+
+        # `Seeder::$command` is declared `protected $command;` with no default,
+        # so it really is unset when a seeder runs outside the console — which
+        # is why Laravel guards it with isset() internally too. The docblock
+        # says otherwise, so the analyser calls a correct check redundant.
+        - identifier: isset.property
+          path: database/seeders/*
+
+    checkModelProperties: false
+    reportUnmatchedIgnoredErrors: false
