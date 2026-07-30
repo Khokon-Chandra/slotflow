@@ -4,7 +4,10 @@ declare(strict_types=1);
 
 use App\Http\Controllers\Api\V1\Admin\AdminBookingController;
 use App\Http\Controllers\Api\V1\Admin\MetricsController;
+use App\Http\Controllers\Api\V1\Ai\BookingAssistantController;
+use App\Http\Controllers\Api\V1\Ai\BriefingController;
 use App\Http\Controllers\Api\V1\Ai\RiskController;
+use App\Http\Controllers\Api\V1\Ai\ServiceDescriptionController;
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\AvailabilityController;
 use App\Http\Controllers\Api\V1\AvailabilityRuleController;
@@ -57,6 +60,11 @@ Route::prefix('v1')
         Route::get('bookings/{reference}', [BookingController::class, 'show'])
             ->where('reference', '[A-Z0-9\-]+');
 
+        // The assistant reads; it never writes. Throttled harder than the rest
+        // because it is the only unauthenticated route that costs money.
+        Route::post('ai/booking-assistant', BookingAssistantController::class)
+            ->middleware('throttle:20,1');
+
         /*
         | Authenticated — any signed-in user.
         */
@@ -95,5 +103,7 @@ Route::prefix('v1')
 
 
             Route::get('bookings/{booking}/risk', RiskController::class);
+            Route::get('ai/daily-briefing', BriefingController::class);
+            Route::post('ai/service-description', ServiceDescriptionController::class);
         });
     });
