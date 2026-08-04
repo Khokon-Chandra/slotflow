@@ -105,6 +105,14 @@ export interface DayStats {
     per_staff: { name: string; bookings: number; booked_minutes: number }[];
 }
 
+export interface Briefing {
+    headline: string;
+    bullets: { text: string; tone: 'neutral' | 'warning' | 'positive' }[];
+    focus: string;
+    stats: DayStats;
+    ai: AiProvenance;
+}
+
 export interface SharedProps {
     auth: {
         user: {
