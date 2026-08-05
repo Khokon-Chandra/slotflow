@@ -107,3 +107,119 @@ describe('the daily briefing', function (): void {
             ]);
     });
 });
+
+describe('service copy', function (): void {
+    it('returns a draft and does not save it', function (): void {
+        Sanctum::actingAs($this->studio->owner());
+
+        $response = $this->postJson('/api/v1/ai/service-description', [
+            'name' => 'Hot towel shave',
+            'duration_minutes' => 30,
+            'price_cents' => 2800,
+        ]);
+
+        $response->assertOk()->assertJsonStructure(['data' => ['description', 'highlights', 'ai']]);
+
+        // A draft for a human to edit — nothing was written.
+        expect(App\Models\Service::query()->where('name', 'Hot towel shave')->exists())->toBeFalse();
+    });
+});
+
+describe('observability', function (): void {
+    it('logs every call with its cost and latency', function (): void {
+        $this->postJson('/api/v1/ai/booking-assistant', [
+            'text' => 'a haircut tomorrow',
+            'tz' => 'Europe/Vienna',
+        ], $this->headers)->assertOk();
+
+        $row = AiInteraction::query()->withoutTenantScope()->latest('id')->sole();
+
+        expect($row->task)->toBe(AiTask::BookingIntent);
+        expect($row->driver)->toBe('heuristic');
+        expect($row->succeeded)->toBeTrue();
+        expect($row->tenant_id)->toBe($this->studio->tenant->id);
+    });
+
+    it('reports usage to the business', function (): void {
+        $this->postJson('/api/v1/ai/booking-assistant', [
+            'text' => 'a haircut tomorrow',
+            'tz' => 'Europe/Vienna',
+        ], $this->headers);
+
+        Sanctum::actingAs($this->studio->owner());
+
+        $this->getJson('/api/v1/admin/ai-usage')
+            ->assertOk()
+            ->assertJsonStructure([
+                'data' => ['window_days', 'total_cost_usd', 'monthly_budget_usd', 'by_task'],
+            ]);
+    });
+});
+
+describe('degradation', function (): void {
+    it('serves an answer when the AI client throws', function (): void {
+        // Swap in a client that fails the way a real outage does.
+        $this->app->bind(App\Ai\Drivers\ClaudeClient::class, fn () => new class implements AiClient
+        {
+            public function name(): string
+            {
+                return 'claude';
+            }
+
+            public function run(AiRequest $request): AiResponse
+            {
+                throw new RuntimeException('API is down');
+            }
+        });
+
+        config()->set('ai.driver', 'claude');
+
+        $response = $this->postJson('/api/v1/ai/booking-assistant', [
+            'text' => 'a haircut tomorrow morning',
+            'tz' => 'Europe/Vienna',
+        ], $this->headers);
+
+        // The customer still gets slots. They are told the answer was degraded.
+        $response->assertOk()
+            ->assertJsonPath('data.ai.driver', 'heuristic')
+            ->assertJsonPath('data.ai.degraded_reason', 'api_error');
+
+        expect($response->json('data.slots'))->not->toBeEmpty();
+
+        // And the failure is on the record.
+        expect(AiInteraction::query()->withoutTenantScope()->latest('id')->sole()->succeeded)->toBeFalse();
+    });
+
+    it('stops calling the API once the monthly budget is spent', function (): void {
+        config()->set('ai.driver', 'claude');
+        config()->set('ai.monthly_budget_usd', 0.01);
+
+        AiInteraction::query()->create([
+            'tenant_id' => $this->studio->tenant->id,
+            'task' => AiTask::BookingIntent,
+            'driver' => 'claude',
+            'model' => 'claude-opus-5',
+            'cost_micros' => 50_000,          // $0.05, over the ceiling
+            'succeeded' => true,
+        ]);
+
+        $this->postJson('/api/v1/ai/booking-assistant', [
+            'text' => 'a haircut tomorrow',
+            'tz' => 'Europe/Vienna',
+        ], $this->headers)
+            ->assertOk()
+            ->assertJsonPath('data.ai.degraded_reason', 'monthly_budget_reached');
+    });
+
+    it('falls back when no API key is configured', function (): void {
+        config()->set('ai.driver', 'auto');
+        config()->set('ai.claude.api_key', null);
+
+        $this->postJson('/api/v1/ai/booking-assistant', [
+            'text' => 'a haircut tomorrow',
+            'tz' => 'Europe/Vienna',
+        ], $this->headers)
+            ->assertOk()
+            ->assertJsonPath('data.ai.degraded_reason', 'no_api_key');
+    });
+});
