@@ -32,6 +32,7 @@ const nav = [
     { label: 'Diary', href: '/admin/bookings', icon: CalendarDays },
     { label: 'Services', href: '/admin/services', icon: Scissors },
     { label: 'Team', href: '/admin/team', icon: Users },
+    { label: 'AI usage', href: '/admin/ai', icon: Sparkles },
     { label: 'Settings', href: '/admin/settings', icon: Settings },
 ];
 

@@ -41,6 +41,7 @@ Route::middleware(ResolveDemoTenant::class)->group(function (): void {
         Route::get('/services', [AdminController::class, 'services'])->name('services');
         Route::get('/team', [AdminController::class, 'team'])->name('team');
         Route::get('/team/{staff}/hours', [AdminController::class, 'availability'])->name('availability');
+        Route::get('/ai', [AdminController::class, 'aiUsage'])->name('ai');
         Route::get('/settings', [AdminController::class, 'settings'])->name('settings');
     });
 });
