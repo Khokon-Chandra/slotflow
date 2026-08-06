@@ -134,3 +134,66 @@ Forgetting a `where` clause is the single most common way a multi-tenant applica
 If a request is authenticated *and* names a different workspace, that is not a routing quirk — it gets a 403. An attempt worth logging is worth refusing.
 
 ---
+
+## Authorisation
+
+Policies answer **who may act**. They never answer **what move is legal**.
+
+```php
+// BookingPolicy — who
+$user->isOwner() || $booking->staff_id === $user->staffProfile?->id
+
+// BookingStatus — what
+BookingStatus::Completed->canTransitionTo(BookingStatus::Confirmed)  // false
+```
+
+Folding the state machine into the policy is tempting and wrong. A client attempting an illegal transition then gets 403, which reads as "you are not allowed" when it means "that is not a thing" — and it hides the useful part of the answer. The API returns `422 invalid_booking_transition` with the list of moves that *are* allowed.
+
+Roles: **owner** administers the workspace; **staff** see and manage their own diary; **customers** see their own bookings. The `admin` middleware is a coarse gate on the whole area; policies decide per record.
+
+---
+
+## Error handling
+
+Out of the box a Laravel API returns three different error shapes — one for validation, one for missing models, one for everything else. Clients then write three parsers and get the third one wrong.
+
+Everything here normalises to one envelope in [`bootstrap/app.php`](../bootstrap/app.php):
+
+```json
+{ "error": { "code": "slot_unavailable", "message": "…", "context": { … } } }
+```
+
+`code` is the stable part and the part clients branch on; changing one is a breaking change. Domain failures render themselves — [`DomainException`](../app/Exceptions/DomainException.php) subclasses carry their own status and machine-readable code, so a taken slot is a `409`, not a `500`, and never an unhandled exception.
+
+404s never name the model class. "App\Models\Booking not found" describes the internals to someone who gains nothing from knowing.
+
+---
+
+## Caching
+
+| What | Key | Invalidated by |
+|---|---|---|
+| Computed availability | `availability:{tenant}:v{version}:{fragment}` | Version counter bumped on any booking, rule or time-off change |
+| AI responses | `ai:{task}:{hash}` | TTL only (15 min default) |
+| Monthly AI spend | `ai:spend:{YYYY-MM}` | 60 s TTL |
+
+Availability uses a **version counter** rather than key deletion: one atomic increment, impossible to miss a key, and stale entries expire on their own TTL. Deleting keys means enumerating them, and the day the enumeration misses one you are selling time that is already sold.
+
+---
+
+## Where a change goes
+
+| If you want to change… | Touch |
+|---|---|
+| How free slots are computed | `app/Domain/Availability/AvailabilityEngine.php` |
+| What makes a booking valid | `app/Domain/Booking/BookingService::assertBookable()` |
+| The statuses a booking can move between | `app/Enums/BookingStatus.php` |
+| How risk is scored | `app/Domain/Risk/NoShowRiskScorer.php` (and its test) |
+| What the model is asked | `app/Ai/Tasks/*` and `app/Ai/Narrators/*` |
+| What happens with no API key | `app/Ai/Heuristics/*` |
+| The response shape of an endpoint | `app/Http/Resources/*` |
+| Booking rules per business | `config/slotflow.php`, overridable in `tenants.settings` |
+
+---
+
+Next: [AVAILABILITY.md](AVAILABILITY.md) — the algorithm in detail.
