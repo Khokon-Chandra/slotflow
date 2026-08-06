@@ -45,4 +45,21 @@ return [
         // booking, rule change and time-off change for the staff member.
         'cache_ttl' => 60,
     ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Demo
+    |--------------------------------------------------------------------------
+    |
+    | The seeded demo tenant. Referenced by the landing page and the README.
+    |
+    */
+
+    'demo' => [
+        'tenant_slug' => 'bright-lane',
+        'owner_email' => 'owner@slotflow.test',
+        'staff_email' => 'maya@slotflow.test',
+        'customer_email' => 'customer@slotflow.test',
+        'password' => 'password',
+    ],
 ];
