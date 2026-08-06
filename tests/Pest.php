@@ -25,6 +25,19 @@ pest()->extend(TestCase::class)
     ->in('Feature');
 
 /*
+| tests/Concurrency truncates instead of transacting.
+|
+| RefreshDatabase wraps each test in a transaction and rolls it back, which is
+| fast and perfectly correct — but it means nothing is ever committed, and a
+| second connection or a forked process cannot see the fixtures. The one test
+| that matters most in this project needs real committed rows and real
+| concurrent connections, so it pays the cost of truncation.
+*/
+pest()->extend(TestCase::class)
+    ->use(DatabaseTruncation::class)
+    ->in('Concurrency');
+
+/*
 |------------------------------------------------------------------------------
 | Expectations
 |------------------------------------------------------------------------------
