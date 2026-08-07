@@ -2,7 +2,7 @@
     "openapi": "3.1.0",
     "info": {
         "title": "SlotFlow API",
-        "version": "0.7.0",
+        "version": "1.0.0",
         "description": "Appointment booking for small service businesses.\n\n**Every request needs a workspace.** Send an `X-Tenant: <slug>` header,\nor authenticate \u2014 a token carries its own workspace and takes\nprecedence.\n\n**Times are UTC on the wire.** Send ISO-8601 instants with an offset;\n`2026-09-01T09:00:00+02:00` and `2026-09-01T07:00:00Z` describe the same\nmoment and are stored identically. Endpoints that render times for a\nhuman take a required `tz` parameter \u2014 an IANA identifier such as\n`Europe/Vienna`. Offsets and abbreviations are rejected, because\nneither can express daylight saving.\n\n**Money is integer minor units** plus a currency code. Never a float,\nnever pre-formatted.\n\n**Errors share one shape**, whatever went wrong:\n\n```json\n{ \"error\": { \"code\": \"slot_unavailable\", \"message\": \"\u2026\", \"context\": {} } }\n```\n\nBranch on `error.code`; it is the stable part of the contract. `409\nslot_unavailable` in particular is a normal outcome on a busy diary,\nnot a failure \u2014 refresh availability and offer another time."
     },
     "servers": [
@@ -11,6 +11,263 @@
         }
     ],
     "paths": {
+        "/admin/bookings": {
+            "get": {
+                "operationId": "adminBooking.index",
+                "description": "Filter by `status`, `staff_id`, `service_id`, `risk`, and a `from`/`to`\ndate range. Results are paginated.",
+                "summary": "Search the diary",
+                "tags": [
+                    "AdminBooking"
+                ],
+                "parameters": [
+                    {
+                        "name": "staff_id",
+                        "in": "query",
+                        "schema": {
+                            "type": "integer",
+                            "default": 0
+                        }
+                    },
+                    {
+                        "name": "service_id",
+                        "in": "query",
+                        "schema": {
+                            "type": "integer",
+                            "default": 0
+                        }
+                    },
+                    {
+                        "name": "per_page",
+                        "in": "query",
+                        "schema": {
+                            "type": "integer",
+                            "default": 25
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Paginated set of `BookingResource`",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "allOf": [
+                                                    {
+                                                        "$ref": "#/components/schemas/BookingResource"
+                                                    },
+                                                    {
+                                                        "type": "object",
+                                                        "required": [
+                                                            "service",
+                                                            "staff"
+                                                        ]
+                                                    }
+                                                ]
+                                            }
+                                        },
+                                        "links": {
+                                            "type": "object",
+                                            "properties": {
+                                                "first": {
+                                                    "type": [
+                                                        "string",
+                                                        "null"
+                                                    ]
+                                                },
+                                                "last": {
+                                                    "type": [
+                                                        "string",
+                                                        "null"
+                                                    ]
+                                                },
+                                                "prev": {
+                                                    "type": [
+                                                        "string",
+                                                        "null"
+                                                    ]
+                                                },
+                                                "next": {
+                                                    "type": [
+                                                        "string",
+                                                        "null"
+                                                    ]
+                                                }
+                                            },
+                                            "required": [
+                                                "first",
+                                                "last",
+                                                "prev",
+                                                "next"
+                                            ]
+                                        },
+                                        "meta": {
+                                            "type": "object",
+                                            "properties": {
+                                                "current_page": {
+                                                    "type": "integer",
+                                                    "minimum": 1
+                                                },
+                                                "from": {
+                                                    "type": [
+                                                        "integer",
+                                                        "null"
+                                                    ],
+                                                    "minimum": 1
+                                                },
+                                                "last_page": {
+                                                    "type": "integer",
+                                                    "minimum": 1
+                                                },
+                                                "links": {
+                                                    "type": "array",
+                                                    "description": "Generated paginator links.",
+                                                    "items": {
+                                                        "type": "object",
+                                                        "properties": {
+                                                            "url": {
+                                                                "type": [
+                                                                    "string",
+                                                                    "null"
+                                                                ]
+                                                            },
+                                                            "label": {
+                                                                "type": "string"
+                                                            },
+                                                            "active": {
+                                                                "type": "boolean"
+                                                            }
+                                                        },
+                                                        "required": [
+                                                            "url",
+                                                            "label",
+                                                            "active"
+                                                        ]
+                                                    }
+                                                },
+                                                "path": {
+                                                    "type": [
+                                                        "string",
+                                                        "null"
+                                                    ],
+                                                    "description": "Base path for paginator generated URLs."
+                                                },
+                                                "per_page": {
+                                                    "type": "integer",
+                                                    "description": "Number of items shown per page.",
+                                                    "minimum": 0
+                                                },
+                                                "to": {
+                                                    "type": [
+                                                        "integer",
+                                                        "null"
+                                                    ],
+                                                    "description": "Number of the last item in the slice.",
+                                                    "minimum": 1
+                                                },
+                                                "total": {
+                                                    "type": "integer",
+                                                    "description": "Total number of items being paginated.",
+                                                    "minimum": 0
+                                                }
+                                            },
+                                            "required": [
+                                                "current_page",
+                                                "from",
+                                                "last_page",
+                                                "links",
+                                                "path",
+                                                "per_page",
+                                                "to",
+                                                "total"
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "data",
+                                        "links",
+                                        "meta"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "$ref": "#/components/responses/AuthorizationException"
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    }
+                }
+            }
+        },
+        "/admin/bookings/{booking}/status": {
+            "patch": {
+                "operationId": "adminBooking.updateStatus",
+                "description": "Transitions are validated against the state machine on BookingStatus;\nan illegal move returns 422 `invalid_booking_transition` with the list\nof moves that *are* allowed.",
+                "summary": "Change a booking's status",
+                "tags": [
+                    "AdminBooking"
+                ],
+                "parameters": [
+                    {
+                        "name": "booking",
+                        "in": "path",
+                        "required": true,
+                        "description": "The booking reference",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/UpdateBookingStatusRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "`BookingResource`",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/components/schemas/BookingResource"
+                                        }
+                                    },
+                                    "required": [
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "$ref": "#/components/responses/ModelNotFoundException"
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    },
+                    "422": {
+                        "$ref": "#/components/responses/ValidationException"
+                    },
+                    "403": {
+                        "$ref": "#/components/responses/AuthorizationException"
+                    }
+                }
+            }
+        },
         "/auth/register": {
             "post": {
                 "operationId": "auth.register",
@@ -504,6 +761,122 @@
                 }
             }
         },
+        "/staff/{staff}/availability-rules": {
+            "get": {
+                "operationId": "availabilityRule.index",
+                "summary": "List working hours",
+                "tags": [
+                    "AvailabilityRule"
+                ],
+                "parameters": [
+                    {
+                        "name": "staff",
+                        "in": "path",
+                        "required": true,
+                        "description": "The staff ID",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Array of `AvailabilityRuleResource`",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/components/schemas/AvailabilityRuleResource"
+                                            }
+                                        }
+                                    },
+                                    "required": [
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "$ref": "#/components/responses/AuthorizationException"
+                    },
+                    "404": {
+                        "$ref": "#/components/responses/ModelNotFoundException"
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    }
+                }
+            },
+            "put": {
+                "operationId": "availabilityRule.sync",
+                "description": "Send the complete week. The operation is a replace, not a merge, so it\nis idempotent \u2014 sending the same payload twice leaves the same schedule.",
+                "summary": "Replace working hours",
+                "tags": [
+                    "AvailabilityRule"
+                ],
+                "parameters": [
+                    {
+                        "name": "staff",
+                        "in": "path",
+                        "required": true,
+                        "description": "The staff ID",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/SyncAvailabilityRulesRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Array of `AvailabilityRuleResource`",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/components/schemas/AvailabilityRuleResource"
+                                            }
+                                        }
+                                    },
+                                    "required": [
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "$ref": "#/components/responses/ModelNotFoundException"
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    },
+                    "422": {
+                        "$ref": "#/components/responses/ValidationException"
+                    },
+                    "403": {
+                        "$ref": "#/components/responses/AuthorizationException"
+                    }
+                }
+            }
+        },
         "/bookings": {
             "post": {
                 "operationId": "booking.store",
@@ -849,6 +1222,965 @@
                 }
             }
         },
+        "/ai/booking-assistant": {
+            "post": {
+                "operationId": "ai.bookingAssistant",
+                "description": "Send what the customer typed. The response contains the parsed intent,\nthe matched service and up to `limit` slots that are genuinely free \u2014\nthey come from the availability engine, not from the model.\n\nBooking one still requires `POST /bookings`. This endpoint never writes.\n\nThe `ai` object reports which driver answered (`claude` or `heuristic`)\nand why, if it degraded. Show that to the user rather than hiding it.",
+                "summary": "Suggest slots from free text",
+                "tags": [
+                    "BookingAssistant"
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/BookingAssistantRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "anyOf": [
+                                                {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "intent": {
+                                                            "type": "object",
+                                                            "properties": {
+                                                                "service_id": {
+                                                                    "type": [
+                                                                        "integer",
+                                                                        "null"
+                                                                    ]
+                                                                },
+                                                                "confidence": {},
+                                                                "staff_id": {
+                                                                    "type": [
+                                                                        "integer",
+                                                                        "null"
+                                                                    ]
+                                                                },
+                                                                "date_from": {
+                                                                    "type": "string"
+                                                                },
+                                                                "date_until": {
+                                                                    "type": "string"
+                                                                },
+                                                                "time_of_day": {},
+                                                                "earliest_time": {
+                                                                    "type": [
+                                                                        "string",
+                                                                        "null"
+                                                                    ]
+                                                                },
+                                                                "latest_time": {
+                                                                    "type": [
+                                                                        "string",
+                                                                        "null"
+                                                                    ]
+                                                                },
+                                                                "summary": {
+                                                                    "type": "string"
+                                                                },
+                                                                "clarification": {
+                                                                    "type": [
+                                                                        "string",
+                                                                        "null"
+                                                                    ]
+                                                                }
+                                                            },
+                                                            "required": [
+                                                                "service_id",
+                                                                "confidence",
+                                                                "staff_id",
+                                                                "date_from",
+                                                                "date_until",
+                                                                "time_of_day",
+                                                                "earliest_time",
+                                                                "latest_time",
+                                                                "summary",
+                                                                "clarification"
+                                                            ]
+                                                        },
+                                                        "service": {
+                                                            "type": "object",
+                                                            "properties": {
+                                                                "id": {
+                                                                    "type": "string"
+                                                                },
+                                                                "name": {
+                                                                    "type": "string"
+                                                                },
+                                                                "slug": {
+                                                                    "type": "string"
+                                                                },
+                                                                "duration_minutes": {
+                                                                    "type": "string"
+                                                                },
+                                                                "price_cents": {
+                                                                    "type": "string"
+                                                                }
+                                                            },
+                                                            "required": [
+                                                                "id",
+                                                                "name",
+                                                                "slug",
+                                                                "duration_minutes",
+                                                                "price_cents"
+                                                            ]
+                                                        },
+                                                        "slots": {
+                                                            "type": "array",
+                                                            "items": {}
+                                                        },
+                                                        "relaxed": {
+                                                            "type": "string"
+                                                        },
+                                                        "message": {
+                                                            "type": "string"
+                                                        },
+                                                        "ai": {
+                                                            "type": "object",
+                                                            "properties": {
+                                                                "driver": {
+                                                                    "type": "string"
+                                                                },
+                                                                "model": {
+                                                                    "type": [
+                                                                        "string",
+                                                                        "null"
+                                                                    ]
+                                                                },
+                                                                "cached": {
+                                                                    "type": "boolean"
+                                                                },
+                                                                "degraded_reason": {
+                                                                    "type": [
+                                                                        "string",
+                                                                        "null"
+                                                                    ]
+                                                                }
+                                                            },
+                                                            "required": [
+                                                                "driver",
+                                                                "model",
+                                                                "cached",
+                                                                "degraded_reason"
+                                                            ]
+                                                        }
+                                                    },
+                                                    "required": [
+                                                        "intent",
+                                                        "service",
+                                                        "slots",
+                                                        "relaxed",
+                                                        "message",
+                                                        "ai"
+                                                    ]
+                                                },
+                                                {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "intent": {
+                                                            "type": "object",
+                                                            "properties": {
+                                                                "service_id": {
+                                                                    "type": [
+                                                                        "integer",
+                                                                        "null"
+                                                                    ]
+                                                                },
+                                                                "confidence": {},
+                                                                "staff_id": {
+                                                                    "type": [
+                                                                        "integer",
+                                                                        "null"
+                                                                    ]
+                                                                },
+                                                                "date_from": {
+                                                                    "type": "string"
+                                                                },
+                                                                "date_until": {
+                                                                    "type": "string"
+                                                                },
+                                                                "time_of_day": {},
+                                                                "earliest_time": {
+                                                                    "type": [
+                                                                        "string",
+                                                                        "null"
+                                                                    ]
+                                                                },
+                                                                "latest_time": {
+                                                                    "type": [
+                                                                        "string",
+                                                                        "null"
+                                                                    ]
+                                                                },
+                                                                "summary": {
+                                                                    "type": "string"
+                                                                },
+                                                                "clarification": {
+                                                                    "type": [
+                                                                        "string",
+                                                                        "null"
+                                                                    ]
+                                                                }
+                                                            },
+                                                            "required": [
+                                                                "service_id",
+                                                                "confidence",
+                                                                "staff_id",
+                                                                "date_from",
+                                                                "date_until",
+                                                                "time_of_day",
+                                                                "earliest_time",
+                                                                "latest_time",
+                                                                "summary",
+                                                                "clarification"
+                                                            ]
+                                                        },
+                                                        "service": {
+                                                            "type": "null"
+                                                        },
+                                                        "slots": {
+                                                            "type": "array",
+                                                            "items": {
+                                                                "type": "string"
+                                                            },
+                                                            "minItems": 0,
+                                                            "maxItems": 0,
+                                                            "additionalItems": false
+                                                        },
+                                                        "relaxed": {
+                                                            "type": "boolean"
+                                                        },
+                                                        "message": {
+                                                            "type": "string",
+                                                            "const": "That service is not available for online booking. Please pick one from the list."
+                                                        },
+                                                        "ai": {
+                                                            "type": "object",
+                                                            "properties": {
+                                                                "driver": {
+                                                                    "type": "string"
+                                                                },
+                                                                "model": {
+                                                                    "type": [
+                                                                        "string",
+                                                                        "null"
+                                                                    ]
+                                                                },
+                                                                "cached": {
+                                                                    "type": "boolean"
+                                                                },
+                                                                "degraded_reason": {
+                                                                    "type": [
+                                                                        "string",
+                                                                        "null"
+                                                                    ]
+                                                                }
+                                                            },
+                                                            "required": [
+                                                                "driver",
+                                                                "model",
+                                                                "cached",
+                                                                "degraded_reason"
+                                                            ]
+                                                        }
+                                                    },
+                                                    "required": [
+                                                        "intent",
+                                                        "service",
+                                                        "slots",
+                                                        "relaxed",
+                                                        "message",
+                                                        "ai"
+                                                    ]
+                                                },
+                                                {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "intent": {
+                                                            "type": "object",
+                                                            "properties": {
+                                                                "service_id": {
+                                                                    "type": [
+                                                                        "integer",
+                                                                        "null"
+                                                                    ]
+                                                                },
+                                                                "confidence": {},
+                                                                "staff_id": {
+                                                                    "type": [
+                                                                        "integer",
+                                                                        "null"
+                                                                    ]
+                                                                },
+                                                                "date_from": {
+                                                                    "type": "string"
+                                                                },
+                                                                "date_until": {
+                                                                    "type": "string"
+                                                                },
+                                                                "time_of_day": {},
+                                                                "earliest_time": {
+                                                                    "type": [
+                                                                        "string",
+                                                                        "null"
+                                                                    ]
+                                                                },
+                                                                "latest_time": {
+                                                                    "type": [
+                                                                        "string",
+                                                                        "null"
+                                                                    ]
+                                                                },
+                                                                "summary": {
+                                                                    "type": "string"
+                                                                },
+                                                                "clarification": {
+                                                                    "type": [
+                                                                        "string",
+                                                                        "null"
+                                                                    ]
+                                                                }
+                                                            },
+                                                            "required": [
+                                                                "service_id",
+                                                                "confidence",
+                                                                "staff_id",
+                                                                "date_from",
+                                                                "date_until",
+                                                                "time_of_day",
+                                                                "earliest_time",
+                                                                "latest_time",
+                                                                "summary",
+                                                                "clarification"
+                                                            ]
+                                                        },
+                                                        "service": {
+                                                            "type": "null"
+                                                        },
+                                                        "slots": {
+                                                            "type": "array",
+                                                            "items": {
+                                                                "type": "string"
+                                                            },
+                                                            "minItems": 0,
+                                                            "maxItems": 0,
+                                                            "additionalItems": false
+                                                        },
+                                                        "relaxed": {
+                                                            "type": "boolean"
+                                                        },
+                                                        "message": {
+                                                            "type": "string"
+                                                        },
+                                                        "ai": {
+                                                            "type": "object",
+                                                            "properties": {
+                                                                "driver": {
+                                                                    "type": "string"
+                                                                },
+                                                                "model": {
+                                                                    "type": [
+                                                                        "string",
+                                                                        "null"
+                                                                    ]
+                                                                },
+                                                                "cached": {
+                                                                    "type": "boolean"
+                                                                },
+                                                                "degraded_reason": {
+                                                                    "type": [
+                                                                        "string",
+                                                                        "null"
+                                                                    ]
+                                                                }
+                                                            },
+                                                            "required": [
+                                                                "driver",
+                                                                "model",
+                                                                "cached",
+                                                                "degraded_reason"
+                                                            ]
+                                                        }
+                                                    },
+                                                    "required": [
+                                                        "intent",
+                                                        "service",
+                                                        "slots",
+                                                        "relaxed",
+                                                        "message",
+                                                        "ai"
+                                                    ]
+                                                }
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "$ref": "#/components/responses/ValidationException"
+                    }
+                }
+            }
+        },
+        "/ai/daily-briefing": {
+            "get": {
+                "operationId": "ai.briefing",
+                "description": "The figures in `stats` are computed by the application. The model only\ndecides which of them matter and writes the sentences.",
+                "summary": "Today's briefing",
+                "tags": [
+                    "Briefing"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "headline": {
+                                                    "type": "string"
+                                                },
+                                                "bullets": {
+                                                    "type": "array",
+                                                    "items": {}
+                                                },
+                                                "focus": {
+                                                    "type": "string"
+                                                },
+                                                "stats": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "date": {
+                                                            "type": "string"
+                                                        },
+                                                        "booking_count": {
+                                                            "type": "integer",
+                                                            "minimum": 0
+                                                        },
+                                                        "high_risk_count": {
+                                                            "type": "integer",
+                                                            "minimum": 0
+                                                        },
+                                                        "revenue_cents": {
+                                                            "type": "integer"
+                                                        },
+                                                        "currency": {
+                                                            "type": "string"
+                                                        },
+                                                        "utilisation_percent": {
+                                                            "type": "integer"
+                                                        },
+                                                        "first_start": {
+                                                            "type": [
+                                                                "string",
+                                                                "null"
+                                                            ]
+                                                        },
+                                                        "last_end": {
+                                                            "type": [
+                                                                "string",
+                                                                "null"
+                                                            ]
+                                                        },
+                                                        "largest_gap_minutes": {
+                                                            "type": "string"
+                                                        },
+                                                        "largest_gap_start": {
+                                                            "type": "string"
+                                                        },
+                                                        "busiest_staff": {
+                                                            "type": [
+                                                                "string",
+                                                                "null"
+                                                            ]
+                                                        },
+                                                        "quiet_staff": {
+                                                            "type": [
+                                                                "string",
+                                                                "null"
+                                                            ]
+                                                        },
+                                                        "per_staff": {
+                                                            "type": "array",
+                                                            "items": {
+                                                                "type": "object",
+                                                                "properties": {
+                                                                    "name": {
+                                                                        "type": "string"
+                                                                    },
+                                                                    "bookings": {
+                                                                        "type": "integer"
+                                                                    },
+                                                                    "booked_minutes": {
+                                                                        "type": "integer"
+                                                                    }
+                                                                },
+                                                                "required": [
+                                                                    "name",
+                                                                    "bookings",
+                                                                    "booked_minutes"
+                                                                ]
+                                                            }
+                                                        }
+                                                    },
+                                                    "required": [
+                                                        "date",
+                                                        "booking_count",
+                                                        "high_risk_count",
+                                                        "revenue_cents",
+                                                        "currency",
+                                                        "utilisation_percent",
+                                                        "first_start",
+                                                        "last_end",
+                                                        "largest_gap_minutes",
+                                                        "largest_gap_start",
+                                                        "busiest_staff",
+                                                        "quiet_staff",
+                                                        "per_staff"
+                                                    ]
+                                                },
+                                                "ai": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "driver": {
+                                                            "type": "string"
+                                                        },
+                                                        "model": {
+                                                            "type": [
+                                                                "string",
+                                                                "null"
+                                                            ]
+                                                        },
+                                                        "cached": {
+                                                            "type": "boolean"
+                                                        },
+                                                        "degraded_reason": {
+                                                            "type": [
+                                                                "string",
+                                                                "null"
+                                                            ]
+                                                        }
+                                                    },
+                                                    "required": [
+                                                        "driver",
+                                                        "model",
+                                                        "cached",
+                                                        "degraded_reason"
+                                                    ]
+                                                }
+                                            },
+                                            "required": [
+                                                "headline",
+                                                "bullets",
+                                                "focus",
+                                                "stats",
+                                                "ai"
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "$ref": "#/components/responses/AuthorizationException"
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    }
+                }
+            }
+        },
+        "/admin/metrics": {
+            "get": {
+                "operationId": "metrics.index",
+                "description": "Bookings, revenue and the no-show rate over a rolling window, plus\ntoday's schedule statistics.",
+                "summary": "Headline numbers",
+                "tags": [
+                    "Metrics"
+                ],
+                "parameters": [
+                    {
+                        "name": "days",
+                        "in": "query",
+                        "schema": {
+                            "type": "integer",
+                            "default": 30
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "window_days": {
+                                                    "type": [
+                                                        "object",
+                                                        "null"
+                                                    ]
+                                                },
+                                                "totals": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "bookings": {
+                                                            "type": "integer"
+                                                        },
+                                                        "completed": {
+                                                            "type": "integer"
+                                                        },
+                                                        "cancelled": {
+                                                            "type": "integer"
+                                                        },
+                                                        "no_shows": {
+                                                            "type": "integer"
+                                                        },
+                                                        "upcoming": {
+                                                            "type": "string"
+                                                        }
+                                                    },
+                                                    "required": [
+                                                        "bookings",
+                                                        "completed",
+                                                        "cancelled",
+                                                        "no_shows",
+                                                        "upcoming"
+                                                    ]
+                                                },
+                                                "revenue": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "currency": {
+                                                            "type": "string"
+                                                        },
+                                                        "realised_cents": {
+                                                            "type": "integer"
+                                                        },
+                                                        "lost_to_no_shows_cents": {
+                                                            "type": "integer",
+                                                            "description": "What the no-shows cost. This is the number the whole\nrisk feature exists to move, so it belongs on the\ndashboard next to it."
+                                                        }
+                                                    },
+                                                    "required": [
+                                                        "currency",
+                                                        "realised_cents",
+                                                        "lost_to_no_shows_cents"
+                                                    ]
+                                                },
+                                                "no_show_rate": {
+                                                    "type": "number"
+                                                },
+                                                "today": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "date": {
+                                                            "type": "string"
+                                                        },
+                                                        "booking_count": {
+                                                            "type": "integer",
+                                                            "minimum": 0
+                                                        },
+                                                        "high_risk_count": {
+                                                            "type": "integer",
+                                                            "minimum": 0
+                                                        },
+                                                        "revenue_cents": {
+                                                            "type": "integer"
+                                                        },
+                                                        "currency": {
+                                                            "type": "string"
+                                                        },
+                                                        "utilisation_percent": {
+                                                            "type": "integer"
+                                                        },
+                                                        "first_start": {
+                                                            "type": [
+                                                                "string",
+                                                                "null"
+                                                            ]
+                                                        },
+                                                        "last_end": {
+                                                            "type": [
+                                                                "string",
+                                                                "null"
+                                                            ]
+                                                        },
+                                                        "largest_gap_minutes": {
+                                                            "type": "string"
+                                                        },
+                                                        "largest_gap_start": {
+                                                            "type": "string"
+                                                        },
+                                                        "busiest_staff": {
+                                                            "type": [
+                                                                "string",
+                                                                "null"
+                                                            ]
+                                                        },
+                                                        "quiet_staff": {
+                                                            "type": [
+                                                                "string",
+                                                                "null"
+                                                            ]
+                                                        },
+                                                        "per_staff": {
+                                                            "type": "array",
+                                                            "items": {
+                                                                "type": "object",
+                                                                "properties": {
+                                                                    "name": {
+                                                                        "type": "string"
+                                                                    },
+                                                                    "bookings": {
+                                                                        "type": "integer"
+                                                                    },
+                                                                    "booked_minutes": {
+                                                                        "type": "integer"
+                                                                    }
+                                                                },
+                                                                "required": [
+                                                                    "name",
+                                                                    "bookings",
+                                                                    "booked_minutes"
+                                                                ]
+                                                            }
+                                                        }
+                                                    },
+                                                    "required": [
+                                                        "date",
+                                                        "booking_count",
+                                                        "high_risk_count",
+                                                        "revenue_cents",
+                                                        "currency",
+                                                        "utilisation_percent",
+                                                        "first_start",
+                                                        "last_end",
+                                                        "largest_gap_minutes",
+                                                        "largest_gap_start",
+                                                        "busiest_staff",
+                                                        "quiet_staff",
+                                                        "per_staff"
+                                                    ]
+                                                }
+                                            },
+                                            "required": [
+                                                "window_days",
+                                                "totals",
+                                                "revenue",
+                                                "no_show_rate",
+                                                "today"
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "$ref": "#/components/responses/AuthorizationException"
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    }
+                }
+            }
+        },
+        "/admin/ai-usage": {
+            "get": {
+                "operationId": "metrics.aiUsage",
+                "description": "Every AI call this workspace has made, aggregated by task. What it cost,\nhow long it took, how often it fell back.",
+                "summary": "AI usage and spend",
+                "tags": [
+                    "Metrics"
+                ],
+                "parameters": [
+                    {
+                        "name": "days",
+                        "in": "query",
+                        "schema": {
+                            "type": "integer",
+                            "default": 30
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "window_days": {
+                                                    "type": [
+                                                        "object",
+                                                        "null"
+                                                    ]
+                                                },
+                                                "total_cost_usd": {
+                                                    "type": "number"
+                                                },
+                                                "monthly_budget_usd": {
+                                                    "type": "number"
+                                                },
+                                                "by_task": {
+                                                    "type": "array",
+                                                    "items": {
+                                                        "type": "object",
+                                                        "properties": {
+                                                            "task": {
+                                                                "type": "string"
+                                                            },
+                                                            "driver": {
+                                                                "type": "string"
+                                                            },
+                                                            "calls": {
+                                                                "type": "integer"
+                                                            },
+                                                            "cost_usd": {
+                                                                "type": "number"
+                                                            },
+                                                            "input_tokens": {
+                                                                "type": "integer"
+                                                            },
+                                                            "output_tokens": {
+                                                                "type": "integer"
+                                                            },
+                                                            "avg_latency_ms": {
+                                                                "type": "integer"
+                                                            },
+                                                            "cache_hits": {
+                                                                "type": "integer"
+                                                            },
+                                                            "failures": {
+                                                                "type": "integer"
+                                                            }
+                                                        },
+                                                        "required": [
+                                                            "task",
+                                                            "driver",
+                                                            "calls",
+                                                            "cost_usd",
+                                                            "input_tokens",
+                                                            "output_tokens",
+                                                            "avg_latency_ms",
+                                                            "cache_hits",
+                                                            "failures"
+                                                        ]
+                                                    }
+                                                }
+                                            },
+                                            "required": [
+                                                "window_days",
+                                                "total_cost_usd",
+                                                "monthly_budget_usd",
+                                                "by_task"
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "$ref": "#/components/responses/AuthorizationException"
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    }
+                }
+            }
+        },
+        "/bookings/{booking}/risk": {
+            "get": {
+                "operationId": "ai.risk",
+                "description": "The score and factors are deterministic \u2014 the same booking always scores\nthe same. Only `rationale` and `recommended_action` are model-written,\nand `generated_by` says which of the two produced them.\n\nPass `refresh=1` to recompute (the customer's history may have moved).",
+                "summary": "Risk for a booking",
+                "tags": [
+                    "Risk"
+                ],
+                "parameters": [
+                    {
+                        "name": "booking",
+                        "in": "path",
+                        "required": true,
+                        "description": "The booking reference",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "`RiskAssessmentResource`",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/components/schemas/RiskAssessmentResource"
+                                        }
+                                    },
+                                    "required": [
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "$ref": "#/components/responses/AuthorizationException"
+                    },
+                    "404": {
+                        "$ref": "#/components/responses/ModelNotFoundException"
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    }
+                }
+            }
+        },
         "/services": {
             "get": {
                 "operationId": "service.index",
@@ -1147,6 +2479,98 @@
                 }
             }
         },
+        "/ai/service-description": {
+            "post": {
+                "operationId": "ai.serviceDescription",
+                "description": "Returns a draft for a human to edit. It is not saved anywhere \u2014 the\nowner still has to accept it in the form.",
+                "summary": "Draft a service description",
+                "tags": [
+                    "ServiceDescription"
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/ServiceDescriptionRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "description": {
+                                                    "type": "string"
+                                                },
+                                                "highlights": {
+                                                    "type": "array",
+                                                    "items": {}
+                                                },
+                                                "ai": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "driver": {
+                                                            "type": "string"
+                                                        },
+                                                        "model": {
+                                                            "type": [
+                                                                "string",
+                                                                "null"
+                                                            ]
+                                                        },
+                                                        "cached": {
+                                                            "type": "boolean"
+                                                        },
+                                                        "degraded_reason": {
+                                                            "type": [
+                                                                "string",
+                                                                "null"
+                                                            ]
+                                                        }
+                                                    },
+                                                    "required": [
+                                                        "driver",
+                                                        "model",
+                                                        "cached",
+                                                        "degraded_reason"
+                                                    ]
+                                                }
+                                            },
+                                            "required": [
+                                                "description",
+                                                "highlights",
+                                                "ai"
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    },
+                    "422": {
+                        "$ref": "#/components/responses/ValidationException"
+                    },
+                    "403": {
+                        "$ref": "#/components/responses/AuthorizationException"
+                    }
+                }
+            }
+        },
         "/staff": {
             "get": {
                 "operationId": "staff.index",
@@ -1440,6 +2864,182 @@
                                     "required": [
                                         "error"
                                     ]
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "$ref": "#/components/responses/AuthorizationException"
+                    },
+                    "404": {
+                        "$ref": "#/components/responses/ModelNotFoundException"
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    }
+                }
+            }
+        },
+        "/staff/{staff}/time-off": {
+            "get": {
+                "operationId": "timeOff.index",
+                "summary": "List time off",
+                "tags": [
+                    "TimeOff"
+                ],
+                "parameters": [
+                    {
+                        "name": "staff",
+                        "in": "path",
+                        "required": true,
+                        "description": "The staff ID",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Array of `TimeOffResource`",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/components/schemas/TimeOffResource"
+                                            }
+                                        }
+                                    },
+                                    "required": [
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "$ref": "#/components/responses/AuthorizationException"
+                    },
+                    "404": {
+                        "$ref": "#/components/responses/ModelNotFoundException"
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    }
+                }
+            },
+            "post": {
+                "operationId": "timeOff.store",
+                "description": "Existing bookings inside the interval are *not* cancelled automatically.\nSilently dropping appointments someone has already promised to attend is\nnot a decision an API should make; the conflicts are returned instead so\nthe caller can deal with them.",
+                "summary": "Book time off",
+                "tags": [
+                    "TimeOff"
+                ],
+                "parameters": [
+                    {
+                        "name": "staff",
+                        "in": "path",
+                        "required": true,
+                        "description": "The staff ID",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/StoreTimeOffRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/components/schemas/TimeOffResource"
+                                        },
+                                        "meta": {
+                                            "type": "object",
+                                            "properties": {
+                                                "conflicting_bookings": {
+                                                    "type": "string"
+                                                }
+                                            },
+                                            "required": [
+                                                "conflicting_bookings"
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "data",
+                                        "meta"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "$ref": "#/components/responses/ModelNotFoundException"
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    },
+                    "422": {
+                        "$ref": "#/components/responses/ValidationException"
+                    },
+                    "403": {
+                        "$ref": "#/components/responses/AuthorizationException"
+                    }
+                }
+            }
+        },
+        "/staff/{staff}/time-off/{timeOff}": {
+            "delete": {
+                "operationId": "timeOff.destroy",
+                "summary": "Delete time off",
+                "tags": [
+                    "TimeOff"
+                ],
+                "parameters": [
+                    {
+                        "name": "staff",
+                        "in": "path",
+                        "required": true,
+                        "description": "The staff ID",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "name": "timeOff",
+                        "in": "path",
+                        "required": true,
+                        "description": "The time off ID",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No content",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {}
                                 }
                             }
                         }
