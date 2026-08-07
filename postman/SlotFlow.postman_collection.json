@@ -1,0 +1,914 @@
+{
+    "info": {
+        "name": "SlotFlow API v1",
+        "description": "Appointment booking for small service businesses.\n\n## Before you start\n\n1. Set `base_url` (defaults to `http://localhost:8000`).\n2. Run **Auth \u2192 Log in**. It stores the bearer token in `token` automatically, so every other request just works.\n3. Run **Availability \u2192 Find slots** and paste a `starts_at` into **Bookings \u2192 Create a booking**.\n\n## Conventions\n\n- **Workspace**: every request needs one. Send `X-Tenant: <slug>`, or authenticate \u2014 a token carries its own and takes precedence.\n- **Time**: UTC on the wire, ISO-8601 with an offset. Anything that renders a time for a human takes a required `tz` (an IANA name such as `Europe/Vienna`). Offsets and abbreviations are rejected \u2014 neither can express daylight saving.\n- **Money**: integer minor units plus a currency code.\n- **Errors**: one shape, always \u2014 `{ \"error\": { \"code\", \"message\", \u2026 } }`. Branch on `error.code`.\n\n## The one worth reading\n\n`POST /bookings` returns **409 `slot_unavailable`** when the slot went between the customer seeing it and confirming it. On a busy diary that is a normal Tuesday, not a failure: refresh availability and offer another time.",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "auth": {
+        "type": "bearer",
+        "bearer": [
+            {
+                "key": "token",
+                "value": "{{token}}",
+                "type": "string"
+            }
+        ]
+    },
+    "variable": [
+        {
+            "key": "base_url",
+            "value": "http://localhost:8000",
+            "description": "Where the app is running."
+        },
+        {
+            "key": "tenant",
+            "value": "bright-lane",
+            "description": "Workspace slug of the seeded demo studio."
+        },
+        {
+            "key": "token",
+            "value": "",
+            "description": "Filled in by 'Log in'."
+        },
+        {
+            "key": "tz",
+            "value": "Europe/Vienna",
+            "description": "Your IANA timezone. Slots come back rendered in it."
+        },
+        {
+            "key": "service_id",
+            "value": "1"
+        },
+        {
+            "key": "staff_id",
+            "value": "1"
+        },
+        {
+            "key": "booking_reference",
+            "value": "",
+            "description": "Filled in by 'Create a booking'."
+        }
+    ],
+    "item": [
+        {
+            "name": "Auth",
+            "description": "Token authentication. Send the token as `Authorization: Bearer <token>`.",
+            "item": [
+                {
+                    "name": "Register a customer",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Tenant",
+                                "value": "{{tenant}}",
+                                "description": "The workspace. Ignored when a token is sent \u2014 a token carries its own."
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/auth/register",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "auth",
+                                "register"
+                            ]
+                        },
+                        "description": "Creates a customer account in the workspace named by `X-Tenant`, and returns a token.\n\nIf the address already has guest bookings, they are adopted \u2014 so the customer keeps their history, and therefore their risk profile.",
+                        "auth": {
+                            "type": "noauth"
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"name\": \"Ada Lovelace\",\n  \"email\": \"ada@example.test\",\n  \"password\": \"correct-horse-battery\",\n  \"password_confirmation\": \"correct-horse-battery\",\n  \"phone\": \"+43 660 1234567\",\n  \"timezone\": \"Europe/Vienna\"\n}"
+                        }
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                                    "if (pm.response.code === 201) {",
+                                    "    pm.collectionVariables.set('token', pm.response.json().data.token);",
+                                    "}"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "Log in",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Tenant",
+                                "value": "{{tenant}}",
+                                "description": "The workspace. Ignored when a token is sent \u2014 a token carries its own."
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/auth/login",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "auth",
+                                "login"
+                            ]
+                        },
+                        "description": "Exchanges credentials for a bearer token, and stores it in the `token` variable.\n\nSeeded demo accounts (password `password` for all three):\n- `owner@slotflow.test` \u2014 full admin\n- `maya@slotflow.test` \u2014 staff, sees only her own diary\n- `customer@slotflow.test` \u2014 customer",
+                        "auth": {
+                            "type": "noauth"
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"email\": \"owner@slotflow.test\",\n  \"password\": \"password\",\n  \"device_name\": \"Postman\"\n}"
+                        }
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                                    "if (pm.response.code === 200) {",
+                                    "    pm.collectionVariables.set('token', pm.response.json().data.token);",
+                                    "    console.log('Token stored.');",
+                                    "}"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "Who am I",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Tenant",
+                                "value": "{{tenant}}",
+                                "description": "The workspace. Ignored when a token is sent \u2014 a token carries its own."
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/auth/me",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "auth",
+                                "me"
+                            ]
+                        },
+                        "description": "The authenticated user and their workspace."
+                    }
+                },
+                {
+                    "name": "Log out",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Tenant",
+                                "value": "{{tenant}}",
+                                "description": "The workspace. Ignored when a token is sent \u2014 a token carries its own."
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/auth/logout",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "auth",
+                                "logout"
+                            ]
+                        },
+                        "description": "Revokes only the token used for this request. Other devices stay signed in."
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Catalogue",
+            "description": "What can be booked, and who performs it. Reading is public.",
+            "item": [
+                {
+                    "name": "List services",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Tenant",
+                                "value": "{{tenant}}",
+                                "description": "The workspace. Ignored when a token is sent \u2014 a token carries its own."
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/services",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "services"
+                            ]
+                        },
+                        "description": "Active services. Owners may add `include_inactive=1`.",
+                        "auth": {
+                            "type": "noauth"
+                        }
+                    }
+                },
+                {
+                    "name": "Show a service",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Tenant",
+                                "value": "{{tenant}}",
+                                "description": "The workspace. Ignored when a token is sent \u2014 a token carries its own."
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/services/cut-finish",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "services",
+                                "cut-finish"
+                            ]
+                        },
+                        "description": "Looked up by slug.",
+                        "auth": {
+                            "type": "noauth"
+                        }
+                    }
+                },
+                {
+                    "name": "Create a service",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Tenant",
+                                "value": "{{tenant}}",
+                                "description": "The workspace. Ignored when a token is sent \u2014 a token carries its own."
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/services",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "services"
+                            ]
+                        },
+                        "description": "Owner only.\n\n`buffer_minutes` is turnaround time: it blocks the diary after the appointment, is not shown to the customer, and is not billed.\n\n`keywords` is what customers actually type. They ask for a haircut; the service is called \"Cut & finish\". Without the bridge, the booking assistant cannot match them.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"name\": \"Hot towel shave\",\n  \"description\": \"A traditional wet shave with hot towels and a finishing balm.\",\n  \"keywords\": \"shave, wet shave, hot towel, barber\",\n  \"duration_minutes\": 30,\n  \"buffer_minutes\": 10,\n  \"price_cents\": 2800,\n  \"color\": \"#0ea5e9\",\n  \"is_active\": true,\n  \"staff_ids\": [\n    2\n  ]\n}"
+                        }
+                    }
+                },
+                {
+                    "name": "Update a service",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Tenant",
+                                "value": "{{tenant}}",
+                                "description": "The workspace. Ignored when a token is sent \u2014 a token carries its own."
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/services/cut-finish",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "services",
+                                "cut-finish"
+                            ]
+                        },
+                        "description": "Owner only. Partial \u2014 send only what changes.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"price_cents\": 5200\n}"
+                        }
+                    }
+                },
+                {
+                    "name": "Delete a service",
+                    "request": {
+                        "method": "DELETE",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Tenant",
+                                "value": "{{tenant}}",
+                                "description": "The workspace. Ignored when a token is sent \u2014 a token carries its own."
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/services/hot-towel-shave",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "services",
+                                "hot-towel-shave"
+                            ]
+                        },
+                        "description": "Refuses with **409 `service_has_bookings`** while future bookings exist. Deactivate it instead \u2014 deleting would orphan appointments people have been promised."
+                    }
+                },
+                {
+                    "name": "List the team",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Tenant",
+                                "value": "{{tenant}}",
+                                "description": "The workspace. Ignored when a token is sent \u2014 a token carries its own."
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/staff?service_id={{service_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "staff"
+                            ],
+                            "query": [
+                                {
+                                    "key": "service_id",
+                                    "value": "{{service_id}}",
+                                    "description": "Only staff who perform this service"
+                                }
+                            ]
+                        },
+                        "description": "Add `service_id` to filter to those who perform one service.",
+                        "auth": {
+                            "type": "noauth"
+                        }
+                    }
+                },
+                {
+                    "name": "Add a team member",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Tenant",
+                                "value": "{{tenant}}",
+                                "description": "The workspace. Ignored when a token is sent \u2014 a token carries its own."
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/staff",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "staff"
+                            ]
+                        },
+                        "description": "Owner only. `timezone` is the clock this person works to \u2014 it need not match the business's. The seeded studio has a consultant in Asia/Kolkata for exactly this reason.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"name\": \"Jonas Weber\",\n  \"title\": \"Stylist\",\n  \"bio\": \"Ten years in Berlin, now here.\",\n  \"timezone\": \"Europe/Vienna\",\n  \"is_active\": true,\n  \"service_ids\": [\n    1\n  ]\n}"
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Working hours",
+            "description": "Availability is stored as rules, not as pre-generated slots.",
+            "item": [
+                {
+                    "name": "Get working hours",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Tenant",
+                                "value": "{{tenant}}",
+                                "description": "The workspace. Ignored when a token is sent \u2014 a token carries its own."
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/staff/{{staff_id}}/availability-rules",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "staff",
+                                "{{staff_id}}",
+                                "availability-rules"
+                            ]
+                        },
+                        "description": "Wall-clock times in the staff member's own timezone. `weekday` is 0 = Sunday \u2026 6 = Saturday."
+                    }
+                },
+                {
+                    "name": "Replace working hours",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Tenant",
+                                "value": "{{tenant}}",
+                                "description": "The workspace. Ignored when a token is sent \u2014 a token carries its own."
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/staff/{{staff_id}}/availability-rules",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "staff",
+                                "{{staff_id}}",
+                                "availability-rules"
+                            ]
+                        },
+                        "description": "Send the complete week; it replaces what was there. A replace rather than a merge, so sending the same payload twice leaves the same schedule.\n\nTwo entries on one weekday is how you model a lunch break. An end earlier than the start means an overnight shift, and is handled.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"rules\": [\n    {\n      \"weekday\": 2,\n      \"starts_at\": \"09:00\",\n      \"ends_at\": \"13:00\"\n    },\n    {\n      \"weekday\": 2,\n      \"starts_at\": \"14:00\",\n      \"ends_at\": \"18:00\"\n    },\n    {\n      \"weekday\": 4,\n      \"starts_at\": \"11:00\",\n      \"ends_at\": \"19:00\"\n    }\n  ]\n}"
+                        }
+                    }
+                },
+                {
+                    "name": "Book time off",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Tenant",
+                                "value": "{{tenant}}",
+                                "description": "The workspace. Ignored when a token is sent \u2014 a token carries its own."
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/staff/{{staff_id}}/time-off",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "staff",
+                                "{{staff_id}}",
+                                "time-off"
+                            ]
+                        },
+                        "description": "Absolute instants, in UTC.\n\nExisting bookings inside the window are **not** cancelled. They come back in `meta.conflicting_bookings` so you can deal with them \u2014 silently dropping appointments someone has already been promised is not a decision an API should make.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"starts_at\": \"2026-09-14T07:00:00Z\",\n  \"ends_at\": \"2026-09-18T16:00:00Z\",\n  \"reason\": \"Holiday\"\n}"
+                        }
+                    }
+                },
+                {
+                    "name": "List time off",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Tenant",
+                                "value": "{{tenant}}",
+                                "description": "The workspace. Ignored when a token is sent \u2014 a token carries its own."
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/staff/{{staff_id}}/time-off",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "staff",
+                                "{{staff_id}}",
+                                "time-off"
+                            ]
+                        },
+                        "description": "Past and future."
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Availability",
+            "description": "Free slots, computed at request time from rules \u2212 time off \u2212 existing bookings.",
+            "item": [
+                {
+                    "name": "Find slots",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Tenant",
+                                "value": "{{tenant}}",
+                                "description": "The workspace. Ignored when a token is sent \u2014 a token carries its own."
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/availability?service_id={{service_id}}&from=2026-09-01&until=2026-09-07&tz={{tz}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "availability"
+                            ],
+                            "query": [
+                                {
+                                    "key": "service_id",
+                                    "value": "{{service_id}}",
+                                    "description": "Required"
+                                },
+                                {
+                                    "key": "from",
+                                    "value": "2026-09-01",
+                                    "description": "First date, YYYY-MM-DD, in tz"
+                                },
+                                {
+                                    "key": "until",
+                                    "value": "2026-09-07",
+                                    "description": "Last date, inclusive. Max 31 days."
+                                },
+                                {
+                                    "key": "tz",
+                                    "value": "{{tz}}",
+                                    "description": "Required. IANA name \u2014 not an offset, not an abbreviation."
+                                }
+                            ]
+                        },
+                        "description": "`tz` is required. Every slot carries both the UTC instant and its rendering in that zone, grouped by local date.\n\nRun it again with `tz=Asia/Dhaka`: the instants are identical, the wall clocks are not.",
+                        "auth": {
+                            "type": "noauth"
+                        }
+                    }
+                },
+                {
+                    "name": "Find slots for one person",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Tenant",
+                                "value": "{{tenant}}",
+                                "description": "The workspace. Ignored when a token is sent \u2014 a token carries its own."
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/availability?service_id={{service_id}}&date=2026-09-01&tz={{tz}}&staff_id={{staff_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "availability"
+                            ],
+                            "query": [
+                                {
+                                    "key": "service_id",
+                                    "value": "{{service_id}}",
+                                    "description": ""
+                                },
+                                {
+                                    "key": "date",
+                                    "value": "2026-09-01",
+                                    "description": "Shorthand for from = until"
+                                },
+                                {
+                                    "key": "tz",
+                                    "value": "{{tz}}",
+                                    "description": ""
+                                },
+                                {
+                                    "key": "staff_id",
+                                    "value": "{{staff_id}}",
+                                    "description": ""
+                                }
+                            ]
+                        },
+                        "description": "Same call, narrowed to one team member.",
+                        "auth": {
+                            "type": "noauth"
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Bookings",
+            "description": "Making, reading and changing appointments.",
+            "item": [
+                {
+                    "name": "Create a booking",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Tenant",
+                                "value": "{{tenant}}",
+                                "description": "The workspace. Ignored when a token is sent \u2014 a token carries its own."
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/bookings",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "bookings"
+                            ]
+                        },
+                        "description": "**No account required.** Making a customer register before they can make an appointment is the easiest way to lose the appointment.\n\n`starts_at` is an ISO-8601 instant \u2014 paste one straight from an availability response.\n\n**409 `slot_unavailable`** means somebody else took it first. Refresh availability and offer another time; this is a normal outcome, not an error. Send this request twice to see it.",
+                        "auth": {
+                            "type": "noauth"
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"service_id\": 1,\n  \"staff_id\": 1,\n  \"starts_at\": \"2026-09-01T07:00:00Z\",\n  \"customer_name\": \"Ada Lovelace\",\n  \"customer_email\": \"ada@example.test\",\n  \"customer_phone\": \"+43 660 1234567\",\n  \"customer_timezone\": \"Europe/Vienna\",\n  \"notes\": \"First visit \\u2014 going a bit shorter than last time.\"\n}"
+                        }
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                                    "if (pm.response.code === 201) {",
+                                    "    pm.collectionVariables.set('booking_reference', pm.response.json().data.reference);",
+                                    "}",
+                                    "if (pm.response.code === 409) {",
+                                    "    console.log('Slot taken \u2014 that is the concurrency guard working. Pick another time.');",
+                                    "}"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "Read a booking (as a guest)",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Tenant",
+                                "value": "{{tenant}}",
+                                "description": "The workspace. Ignored when a token is sent \u2014 a token carries its own."
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/bookings/{{booking_reference}}?email=ada@example.test",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "bookings",
+                                "{{booking_reference}}"
+                            ],
+                            "query": [
+                                {
+                                    "key": "email",
+                                    "value": "ada@example.test",
+                                    "description": "Must match the booking"
+                                }
+                            ]
+                        },
+                        "description": "A guest may read their own booking by also passing the email it was made with \u2014 enough for a confirmation link, not enough to enumerate.",
+                        "auth": {
+                            "type": "noauth"
+                        }
+                    }
+                },
+                {
+                    "name": "List my bookings",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Tenant",
+                                "value": "{{tenant}}",
+                                "description": "The workspace. Ignored when a token is sent \u2014 a token carries its own."
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/bookings",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "bookings"
+                            ]
+                        },
+                        "description": "Requires a token. A staff token returns only that person's diary."
+                    }
+                },
+                {
+                    "name": "Cancel a booking",
+                    "request": {
+                        "method": "PATCH",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Tenant",
+                                "value": "{{tenant}}",
+                                "description": "The workspace. Ignored when a token is sent \u2014 a token carries its own."
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/bookings/{{booking_reference}}/cancel",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "bookings",
+                                "{{booking_reference}}",
+                                "cancel"
+                            ]
+                        },
+                        "description": "A customer may cancel their own booking, but only outside the cancellation window. Inside it they have to talk to a human \u2014 a business rule, not a technical limit.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"reason\": \"Something came up.\"\n}"
+                        }
+                    }
+                }
+            ]
+        }
+    ]
+}
