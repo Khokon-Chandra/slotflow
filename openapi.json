@@ -1,0 +1,2496 @@
+{
+    "openapi": "3.1.0",
+    "info": {
+        "title": "SlotFlow API",
+        "version": "0.7.0",
+        "description": "Appointment booking for small service businesses.\n\n**Every request needs a workspace.** Send an `X-Tenant: <slug>` header,\nor authenticate \u2014 a token carries its own workspace and takes\nprecedence.\n\n**Times are UTC on the wire.** Send ISO-8601 instants with an offset;\n`2026-09-01T09:00:00+02:00` and `2026-09-01T07:00:00Z` describe the same\nmoment and are stored identically. Endpoints that render times for a\nhuman take a required `tz` parameter \u2014 an IANA identifier such as\n`Europe/Vienna`. Offsets and abbreviations are rejected, because\nneither can express daylight saving.\n\n**Money is integer minor units** plus a currency code. Never a float,\nnever pre-formatted.\n\n**Errors share one shape**, whatever went wrong:\n\n```json\n{ \"error\": { \"code\": \"slot_unavailable\", \"message\": \"\u2026\", \"context\": {} } }\n```\n\nBranch on `error.code`; it is the stable part of the contract. `409\nslot_unavailable` in particular is a normal outcome on a busy diary,\nnot a failure \u2014 refresh availability and offer another time."
+    },
+    "servers": [
+        {
+            "url": "http://localhost:8000/api/v1"
+        }
+    ],
+    "paths": {
+        "/auth/register": {
+            "post": {
+                "operationId": "auth.register",
+                "description": "Creates a customer account in the workspace named by the `X-Tenant`\nheader, and returns a token.",
+                "summary": "Register a customer",
+                "tags": [
+                    "Auth"
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/RegisterRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "token": {
+                                                    "type": "string"
+                                                },
+                                                "user": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "id": {
+                                                            "type": "integer"
+                                                        },
+                                                        "name": {
+                                                            "type": "string"
+                                                        },
+                                                        "email": {
+                                                            "type": "string"
+                                                        },
+                                                        "role": {
+                                                            "type": "string"
+                                                        },
+                                                        "timezone": {
+                                                            "type": "string"
+                                                        },
+                                                        "tenant": {
+                                                            "type": "object",
+                                                            "properties": {
+                                                                "name": {
+                                                                    "type": "string"
+                                                                },
+                                                                "slug": {
+                                                                    "type": "string"
+                                                                },
+                                                                "timezone": {
+                                                                    "type": "string"
+                                                                },
+                                                                "currency": {
+                                                                    "type": "string"
+                                                                }
+                                                            },
+                                                            "required": [
+                                                                "name",
+                                                                "slug",
+                                                                "timezone",
+                                                                "currency"
+                                                            ]
+                                                        }
+                                                    },
+                                                    "required": [
+                                                        "id",
+                                                        "name",
+                                                        "email",
+                                                        "role",
+                                                        "timezone",
+                                                        "tenant"
+                                                    ]
+                                                }
+                                            },
+                                            "required": [
+                                                "token",
+                                                "user"
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "$ref": "#/components/responses/ValidationException"
+                    }
+                }
+            }
+        },
+        "/auth/login": {
+            "post": {
+                "operationId": "auth.login",
+                "description": "Exchanges credentials for a bearer token.",
+                "summary": "Log in",
+                "tags": [
+                    "Auth"
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/LoginRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "token": {
+                                                    "type": "string"
+                                                },
+                                                "user": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "id": {
+                                                            "type": "integer"
+                                                        },
+                                                        "name": {
+                                                            "type": "string"
+                                                        },
+                                                        "email": {
+                                                            "type": "string"
+                                                        },
+                                                        "role": {
+                                                            "type": "string"
+                                                        },
+                                                        "timezone": {
+                                                            "type": "string"
+                                                        },
+                                                        "tenant": {
+                                                            "type": "object",
+                                                            "properties": {
+                                                                "name": {
+                                                                    "type": "string"
+                                                                },
+                                                                "slug": {
+                                                                    "type": "string"
+                                                                },
+                                                                "timezone": {
+                                                                    "type": "string"
+                                                                },
+                                                                "currency": {
+                                                                    "type": "string"
+                                                                }
+                                                            },
+                                                            "required": [
+                                                                "name",
+                                                                "slug",
+                                                                "timezone",
+                                                                "currency"
+                                                            ]
+                                                        }
+                                                    },
+                                                    "required": [
+                                                        "id",
+                                                        "name",
+                                                        "email",
+                                                        "role",
+                                                        "timezone",
+                                                        "tenant"
+                                                    ]
+                                                }
+                                            },
+                                            "required": [
+                                                "token",
+                                                "user"
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "$ref": "#/components/responses/ValidationException"
+                    }
+                }
+            }
+        },
+        "/auth/me": {
+            "get": {
+                "operationId": "auth.me",
+                "summary": "The current user",
+                "tags": [
+                    "Auth"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "id": {
+                                                    "type": "integer"
+                                                },
+                                                "name": {
+                                                    "type": "string"
+                                                },
+                                                "email": {
+                                                    "type": "string"
+                                                },
+                                                "role": {
+                                                    "type": "string"
+                                                },
+                                                "timezone": {
+                                                    "type": "string"
+                                                },
+                                                "tenant": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "name": {
+                                                            "type": "string"
+                                                        },
+                                                        "slug": {
+                                                            "type": "string"
+                                                        },
+                                                        "timezone": {
+                                                            "type": "string"
+                                                        },
+                                                        "currency": {
+                                                            "type": "string"
+                                                        }
+                                                    },
+                                                    "required": [
+                                                        "name",
+                                                        "slug",
+                                                        "timezone",
+                                                        "currency"
+                                                    ]
+                                                }
+                                            },
+                                            "required": [
+                                                "id",
+                                                "name",
+                                                "email",
+                                                "role",
+                                                "timezone",
+                                                "tenant"
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    }
+                }
+            }
+        },
+        "/auth/logout": {
+            "post": {
+                "operationId": "auth.logout",
+                "description": "Revokes only the token used for this request; other devices stay signed in.",
+                "summary": "Log out",
+                "tags": [
+                    "Auth"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "message": {
+                                                    "type": "string",
+                                                    "const": "Token revoked."
+                                                }
+                                            },
+                                            "required": [
+                                                "message"
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    }
+                }
+            }
+        },
+        "/availability": {
+            "get": {
+                "operationId": "availability.index",
+                "description": "`tz` is required and every returned slot carries both the UTC instant\nand its rendering in that zone. Slots are grouped by local date, which\nis what a calendar UI needs and what a date boundary in the caller's\nzone actually means.",
+                "summary": "Find free slots",
+                "tags": [
+                    "Availability"
+                ],
+                "parameters": [
+                    {
+                        "name": "service_id",
+                        "in": "query",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "name": "date",
+                        "in": "query",
+                        "schema": {
+                            "type": "string",
+                            "format": "date"
+                        }
+                    },
+                    {
+                        "name": "from",
+                        "in": "query",
+                        "schema": {
+                            "type": "string",
+                            "format": "date"
+                        }
+                    },
+                    {
+                        "name": "until",
+                        "in": "query",
+                        "schema": {
+                            "type": [
+                                "string",
+                                "null"
+                            ],
+                            "format": "date"
+                        }
+                    },
+                    {
+                        "name": "tz",
+                        "in": "query",
+                        "required": true,
+                        "description": "Required, not optional with a default. A booking API that\nguesses the caller's timezone is a booking API that is\noccasionally an hour wrong, and never says so.",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "staff_id",
+                        "in": "query",
+                        "schema": {
+                            "type": [
+                                "integer",
+                                "null"
+                            ]
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "service": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "id": {
+                                                            "type": "string"
+                                                        },
+                                                        "name": {
+                                                            "type": "string"
+                                                        },
+                                                        "duration_minutes": {
+                                                            "type": "string"
+                                                        }
+                                                    },
+                                                    "required": [
+                                                        "id",
+                                                        "name",
+                                                        "duration_minutes"
+                                                    ]
+                                                },
+                                                "timezone": {
+                                                    "anyOf": [
+                                                        {
+                                                            "type": "string"
+                                                        },
+                                                        {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "UTC"
+                                                            ]
+                                                        }
+                                                    ]
+                                                },
+                                                "from": {
+                                                    "type": "string"
+                                                },
+                                                "until": {
+                                                    "type": "string"
+                                                },
+                                                "slot_count": {
+                                                    "type": "integer"
+                                                },
+                                                "days": {
+                                                    "type": "array",
+                                                    "items": {}
+                                                }
+                                            },
+                                            "required": [
+                                                "service",
+                                                "timezone",
+                                                "from",
+                                                "until",
+                                                "slot_count",
+                                                "days"
+                                            ]
+                                        },
+                                        "meta": {
+                                            "type": "object",
+                                            "properties": {
+                                                "cache_ttl_seconds": {
+                                                    "type": "integer",
+                                                    "description": "Told, not implied. A client that caches responses needs to\nknow the server already did, and for how long."
+                                                },
+                                                "min_notice_minutes": {
+                                                    "type": "integer"
+                                                },
+                                                "max_advance_days": {
+                                                    "type": "integer"
+                                                }
+                                            },
+                                            "required": [
+                                                "cache_ttl_seconds",
+                                                "min_notice_minutes",
+                                                "max_advance_days"
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "data",
+                                        "meta"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "$ref": "#/components/responses/ValidationException"
+                    }
+                }
+            }
+        },
+        "/bookings": {
+            "post": {
+                "operationId": "booking.store",
+                "description": "Returns 409 `slot_unavailable` if the slot went between the customer\nseeing it and confirming it \u2014 the normal race, not an error condition.\nRetry against fresh availability.",
+                "summary": "Create a booking",
+                "tags": [
+                    "Booking"
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/StoreBookingRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "`BookingResource`",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/components/schemas/BookingResource"
+                                        }
+                                    },
+                                    "required": [
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "$ref": "#/components/responses/ValidationException"
+                    }
+                }
+            },
+            "get": {
+                "operationId": "booking.index",
+                "summary": "List my bookings",
+                "tags": [
+                    "Booking"
+                ],
+                "parameters": [
+                    {
+                        "name": "per_page",
+                        "in": "query",
+                        "schema": {
+                            "type": "integer",
+                            "default": 25
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Paginated set of `BookingResource`",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "allOf": [
+                                                    {
+                                                        "$ref": "#/components/schemas/BookingResource"
+                                                    },
+                                                    {
+                                                        "type": "object",
+                                                        "required": [
+                                                            "service",
+                                                            "staff"
+                                                        ]
+                                                    }
+                                                ]
+                                            }
+                                        },
+                                        "links": {
+                                            "type": "object",
+                                            "properties": {
+                                                "first": {
+                                                    "type": [
+                                                        "string",
+                                                        "null"
+                                                    ]
+                                                },
+                                                "last": {
+                                                    "type": [
+                                                        "string",
+                                                        "null"
+                                                    ]
+                                                },
+                                                "prev": {
+                                                    "type": [
+                                                        "string",
+                                                        "null"
+                                                    ]
+                                                },
+                                                "next": {
+                                                    "type": [
+                                                        "string",
+                                                        "null"
+                                                    ]
+                                                }
+                                            },
+                                            "required": [
+                                                "first",
+                                                "last",
+                                                "prev",
+                                                "next"
+                                            ]
+                                        },
+                                        "meta": {
+                                            "type": "object",
+                                            "properties": {
+                                                "current_page": {
+                                                    "type": "integer",
+                                                    "minimum": 1
+                                                },
+                                                "from": {
+                                                    "type": [
+                                                        "integer",
+                                                        "null"
+                                                    ],
+                                                    "minimum": 1
+                                                },
+                                                "last_page": {
+                                                    "type": "integer",
+                                                    "minimum": 1
+                                                },
+                                                "links": {
+                                                    "type": "array",
+                                                    "description": "Generated paginator links.",
+                                                    "items": {
+                                                        "type": "object",
+                                                        "properties": {
+                                                            "url": {
+                                                                "type": [
+                                                                    "string",
+                                                                    "null"
+                                                                ]
+                                                            },
+                                                            "label": {
+                                                                "type": "string"
+                                                            },
+                                                            "active": {
+                                                                "type": "boolean"
+                                                            }
+                                                        },
+                                                        "required": [
+                                                            "url",
+                                                            "label",
+                                                            "active"
+                                                        ]
+                                                    }
+                                                },
+                                                "path": {
+                                                    "type": [
+                                                        "string",
+                                                        "null"
+                                                    ],
+                                                    "description": "Base path for paginator generated URLs."
+                                                },
+                                                "per_page": {
+                                                    "type": "integer",
+                                                    "description": "Number of items shown per page.",
+                                                    "minimum": 0
+                                                },
+                                                "to": {
+                                                    "type": [
+                                                        "integer",
+                                                        "null"
+                                                    ],
+                                                    "description": "Number of the last item in the slice.",
+                                                    "minimum": 1
+                                                },
+                                                "total": {
+                                                    "type": "integer",
+                                                    "description": "Total number of items being paginated.",
+                                                    "minimum": 0
+                                                }
+                                            },
+                                            "required": [
+                                                "current_page",
+                                                "from",
+                                                "last_page",
+                                                "links",
+                                                "path",
+                                                "per_page",
+                                                "to",
+                                                "total"
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "data",
+                                        "links",
+                                        "meta"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "$ref": "#/components/responses/AuthorizationException"
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    }
+                }
+            }
+        },
+        "/bookings/{reference}": {
+            "get": {
+                "operationId": "booking.show",
+                "description": "Looked up by reference (e.g. `BL-7Q4M2X`). A guest may read their own\nbooking by also passing the email it was made with \u2014 enough to be\nuseful in a confirmation link, not enough to enumerate.",
+                "summary": "Show a booking",
+                "tags": [
+                    "Booking"
+                ],
+                "parameters": [
+                    {
+                        "name": "reference",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "`BookingResource`",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "allOf": [
+                                                {
+                                                    "$ref": "#/components/schemas/BookingResource"
+                                                },
+                                                {
+                                                    "type": "object",
+                                                    "required": [
+                                                        "service",
+                                                        "staff"
+                                                    ]
+                                                }
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "$ref": "#/components/responses/AuthorizationException"
+                    },
+                    "404": {
+                        "$ref": "#/components/responses/ModelNotFoundException"
+                    }
+                }
+            }
+        },
+        "/bookings/{booking}/cancel": {
+            "patch": {
+                "operationId": "booking.cancel",
+                "summary": "Cancel a booking",
+                "tags": [
+                    "Booking"
+                ],
+                "parameters": [
+                    {
+                        "name": "booking",
+                        "in": "path",
+                        "required": true,
+                        "description": "The booking reference",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "reason": {
+                                        "type": [
+                                            "string",
+                                            "null"
+                                        ],
+                                        "maxLength": 500
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "`BookingResource`",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/components/schemas/BookingResource"
+                                        }
+                                    },
+                                    "required": [
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "$ref": "#/components/responses/AuthorizationException"
+                    },
+                    "422": {
+                        "$ref": "#/components/responses/ValidationException"
+                    },
+                    "404": {
+                        "$ref": "#/components/responses/ModelNotFoundException"
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    }
+                }
+            }
+        },
+        "/services": {
+            "get": {
+                "operationId": "service.index",
+                "description": "Returns active services by default. Owners may pass `include_inactive=1`.",
+                "summary": "List services",
+                "tags": [
+                    "Service"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Array of `ServiceResource`",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/components/schemas/ServiceResource"
+                                            }
+                                        }
+                                    },
+                                    "required": [
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "operationId": "service.store",
+                "summary": "Create a service",
+                "tags": [
+                    "Service"
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/StoreServiceRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "`ServiceResource`",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "allOf": [
+                                                {
+                                                    "$ref": "#/components/schemas/ServiceResource"
+                                                },
+                                                {
+                                                    "type": "object",
+                                                    "required": [
+                                                        "staff"
+                                                    ]
+                                                }
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "$ref": "#/components/responses/ValidationException"
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    },
+                    "403": {
+                        "$ref": "#/components/responses/AuthorizationException"
+                    }
+                }
+            }
+        },
+        "/services/{service}": {
+            "get": {
+                "operationId": "service.show",
+                "summary": "Show a service",
+                "tags": [
+                    "Service"
+                ],
+                "parameters": [
+                    {
+                        "name": "service",
+                        "in": "path",
+                        "required": true,
+                        "description": "The service slug",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "`ServiceResource`",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "allOf": [
+                                                {
+                                                    "$ref": "#/components/schemas/ServiceResource"
+                                                },
+                                                {
+                                                    "type": "object",
+                                                    "required": [
+                                                        "staff"
+                                                    ]
+                                                }
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "$ref": "#/components/responses/AuthorizationException"
+                    },
+                    "404": {
+                        "$ref": "#/components/responses/ModelNotFoundException"
+                    }
+                }
+            },
+            "put": {
+                "operationId": "service.update",
+                "summary": "Update a service",
+                "tags": [
+                    "Service"
+                ],
+                "parameters": [
+                    {
+                        "name": "service",
+                        "in": "path",
+                        "required": true,
+                        "description": "The service slug",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/UpdateServiceRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "`ServiceResource`",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "allOf": [
+                                                {
+                                                    "$ref": "#/components/schemas/ServiceResource"
+                                                },
+                                                {
+                                                    "type": "object",
+                                                    "required": [
+                                                        "staff"
+                                                    ]
+                                                }
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "$ref": "#/components/responses/ValidationException"
+                    },
+                    "404": {
+                        "$ref": "#/components/responses/ModelNotFoundException"
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    },
+                    "403": {
+                        "$ref": "#/components/responses/AuthorizationException"
+                    }
+                }
+            },
+            "delete": {
+                "operationId": "service.destroy",
+                "description": "Refuses while future bookings exist. Deactivate it instead \u2014 deleting a\nservice that people are booked into would orphan their appointments.",
+                "summary": "Delete a service",
+                "tags": [
+                    "Service"
+                ],
+                "parameters": [
+                    {
+                        "name": "service",
+                        "in": "path",
+                        "required": true,
+                        "description": "The service slug",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No content",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {}
+                                }
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "type": "object",
+                                            "properties": {
+                                                "code": {
+                                                    "type": "string",
+                                                    "const": "service_has_bookings"
+                                                },
+                                                "message": {
+                                                    "type": "string"
+                                                },
+                                                "context": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "upcoming_bookings": {
+                                                            "type": "string"
+                                                        }
+                                                    },
+                                                    "required": [
+                                                        "upcoming_bookings"
+                                                    ]
+                                                }
+                                            },
+                                            "required": [
+                                                "code",
+                                                "message",
+                                                "context"
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "error"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "$ref": "#/components/responses/AuthorizationException"
+                    },
+                    "404": {
+                        "$ref": "#/components/responses/ModelNotFoundException"
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    }
+                }
+            }
+        },
+        "/staff": {
+            "get": {
+                "operationId": "staff.index",
+                "description": "Filter to those who perform one service with `service_id`.",
+                "summary": "List team members",
+                "tags": [
+                    "Staff"
+                ],
+                "parameters": [
+                    {
+                        "name": "service_id",
+                        "in": "query",
+                        "schema": {
+                            "type": "integer",
+                            "default": 0
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Array of `StaffResource`",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/components/schemas/StaffResource"
+                                            }
+                                        }
+                                    },
+                                    "required": [
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "operationId": "staff.store",
+                "summary": "Add a team member",
+                "tags": [
+                    "Staff"
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/StoreStaffRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "`StaffResource`",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "allOf": [
+                                                {
+                                                    "$ref": "#/components/schemas/StaffResource"
+                                                },
+                                                {
+                                                    "type": "object",
+                                                    "required": [
+                                                        "services"
+                                                    ]
+                                                }
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "$ref": "#/components/responses/ValidationException"
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    },
+                    "403": {
+                        "$ref": "#/components/responses/AuthorizationException"
+                    }
+                }
+            }
+        },
+        "/staff/{staff}": {
+            "get": {
+                "operationId": "staff.show",
+                "summary": "Show a team member",
+                "tags": [
+                    "Staff"
+                ],
+                "parameters": [
+                    {
+                        "name": "staff",
+                        "in": "path",
+                        "required": true,
+                        "description": "The staff ID",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "`StaffResource`",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "allOf": [
+                                                {
+                                                    "$ref": "#/components/schemas/StaffResource"
+                                                },
+                                                {
+                                                    "type": "object",
+                                                    "required": [
+                                                        "services",
+                                                        "availability_rules"
+                                                    ]
+                                                }
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "$ref": "#/components/responses/AuthorizationException"
+                    },
+                    "404": {
+                        "$ref": "#/components/responses/ModelNotFoundException"
+                    }
+                }
+            },
+            "put": {
+                "operationId": "staff.update",
+                "summary": "Update a team member",
+                "tags": [
+                    "Staff"
+                ],
+                "parameters": [
+                    {
+                        "name": "staff",
+                        "in": "path",
+                        "required": true,
+                        "description": "The staff ID",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/UpdateStaffRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "`StaffResource`",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "allOf": [
+                                                {
+                                                    "$ref": "#/components/schemas/StaffResource"
+                                                },
+                                                {
+                                                    "type": "object",
+                                                    "required": [
+                                                        "services"
+                                                    ]
+                                                }
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "$ref": "#/components/responses/ValidationException"
+                    },
+                    "404": {
+                        "$ref": "#/components/responses/ModelNotFoundException"
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    },
+                    "403": {
+                        "$ref": "#/components/responses/AuthorizationException"
+                    }
+                }
+            },
+            "delete": {
+                "operationId": "staff.destroy",
+                "description": "Refuses while future bookings exist, for the same reason as services.",
+                "summary": "Remove a team member",
+                "tags": [
+                    "Staff"
+                ],
+                "parameters": [
+                    {
+                        "name": "staff",
+                        "in": "path",
+                        "required": true,
+                        "description": "The staff ID",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No content",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {}
+                                }
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "type": "object",
+                                            "properties": {
+                                                "code": {
+                                                    "type": "string",
+                                                    "const": "staff_has_bookings"
+                                                },
+                                                "message": {
+                                                    "type": "string"
+                                                },
+                                                "context": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "upcoming_bookings": {
+                                                            "type": "string"
+                                                        }
+                                                    },
+                                                    "required": [
+                                                        "upcoming_bookings"
+                                                    ]
+                                                }
+                                            },
+                                            "required": [
+                                                "code",
+                                                "message",
+                                                "context"
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "error"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "$ref": "#/components/responses/AuthorizationException"
+                    },
+                    "404": {
+                        "$ref": "#/components/responses/ModelNotFoundException"
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    }
+                }
+            }
+        }
+    },
+    "components": {
+        "schemas": {
+            "AvailabilityRuleResource": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "integer"
+                    },
+                    "staff_id": {
+                        "type": "integer"
+                    },
+                    "weekday": {
+                        "type": "integer"
+                    },
+                    "starts_at": {
+                        "type": "string",
+                        "description": "Wall-clock times, trimmed to HH:MM. The staff timezone they\nbelong to travels with the staff member, not with each rule."
+                    },
+                    "ends_at": {
+                        "type": "string"
+                    },
+                    "effective_from": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "effective_until": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    }
+                },
+                "required": [
+                    "id",
+                    "staff_id",
+                    "weekday",
+                    "starts_at",
+                    "ends_at",
+                    "effective_from",
+                    "effective_until"
+                ],
+                "title": "AvailabilityRuleResource"
+            },
+            "BookingAssistantRequest": {
+                "type": "object",
+                "properties": {
+                    "text": {
+                        "type": "string",
+                        "description": "Capped at 400 characters: this is a booking request, not a\nconversation. A cap is also the cheapest defence against\nsomeone using an unauthenticated endpoint as free inference.",
+                        "minLength": 2,
+                        "maxLength": 400
+                    },
+                    "tz": {
+                        "type": "string"
+                    },
+                    "limit": {
+                        "type": [
+                            "integer",
+                            "null"
+                        ],
+                        "minimum": 1,
+                        "maximum": 12
+                    }
+                },
+                "required": [
+                    "text",
+                    "tz"
+                ],
+                "title": "BookingAssistantRequest"
+            },
+            "BookingResource": {
+                "type": "object",
+                "properties": {
+                    "reference": {
+                        "type": "string"
+                    },
+                    "status": {
+                        "type": "string"
+                    },
+                    "status_label": {
+                        "type": "string",
+                        "enum": [
+                            "Pending",
+                            "Confirmed",
+                            "Completed",
+                            "Cancelled",
+                            "No-show"
+                        ]
+                    },
+                    "source": {
+                        "type": "string"
+                    },
+                    "starts_at": {
+                        "type": "string"
+                    },
+                    "ends_at": {
+                        "type": "string"
+                    },
+                    "timezone": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "array",
+                                "items": {}
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "local_starts_at": {
+                        "type": "string"
+                    },
+                    "local_ends_at": {
+                        "type": "string"
+                    },
+                    "price_cents": {
+                        "type": "integer"
+                    },
+                    "notes": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "cancellation_reason": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "cancelled_at": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "created_at": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "service": {
+                        "$ref": "#/components/schemas/ServiceResource"
+                    },
+                    "staff": {
+                        "$ref": "#/components/schemas/StaffResource"
+                    },
+                    "customer": {
+                        "type": "object",
+                        "properties": {
+                            "id": {
+                                "type": "integer"
+                            },
+                            "name": {
+                                "type": "string"
+                            },
+                            "email": {
+                                "type": "string"
+                            },
+                            "phone": {
+                                "type": [
+                                    "string",
+                                    "null"
+                                ]
+                            },
+                            "completed_count": {
+                                "type": "integer"
+                            },
+                            "no_show_count": {
+                                "type": "integer"
+                            }
+                        },
+                        "required": [
+                            "id",
+                            "name",
+                            "email",
+                            "phone",
+                            "completed_count",
+                            "no_show_count"
+                        ]
+                    },
+                    "risk": {
+                        "anyOf": [
+                            {
+                                "$ref": "#/components/schemas/RiskAssessmentResource"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    }
+                },
+                "required": [
+                    "reference",
+                    "status",
+                    "status_label",
+                    "source",
+                    "starts_at",
+                    "ends_at",
+                    "timezone",
+                    "local_starts_at",
+                    "local_ends_at",
+                    "price_cents",
+                    "notes",
+                    "cancellation_reason",
+                    "cancelled_at",
+                    "created_at"
+                ],
+                "title": "BookingResource"
+            },
+            "BookingStatus": {
+                "type": "string",
+                "enum": [
+                    "pending",
+                    "confirmed",
+                    "completed",
+                    "cancelled",
+                    "no_show"
+                ],
+                "title": "BookingStatus"
+            },
+            "LoginRequest": {
+                "type": "object",
+                "properties": {
+                    "email": {
+                        "type": "string",
+                        "format": "email"
+                    },
+                    "password": {
+                        "type": "string"
+                    },
+                    "device_name": {
+                        "type": "string",
+                        "description": "Named so the owner can revoke one client without logging out\nevery other. Sanctum tokens are cheap; anonymous ones are not.",
+                        "maxLength": 120
+                    }
+                },
+                "required": [
+                    "email",
+                    "password",
+                    "device_name"
+                ],
+                "title": "LoginRequest"
+            },
+            "RegisterRequest": {
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "maxLength": 120
+                    },
+                    "email": {
+                        "type": "string",
+                        "format": "email",
+                        "maxLength": 190
+                    },
+                    "password": {
+                        "type": "string"
+                    },
+                    "phone": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 32
+                    },
+                    "timezone": {
+                        "type": "string"
+                    },
+                    "password_confirmation": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "name",
+                    "email",
+                    "password",
+                    "timezone",
+                    "password_confirmation"
+                ],
+                "title": "RegisterRequest"
+            },
+            "RiskAssessmentResource": {
+                "type": "object",
+                "properties": {
+                    "score": {
+                        "type": "integer"
+                    },
+                    "band": {
+                        "type": "string"
+                    },
+                    "band_label": {
+                        "type": "string",
+                        "enum": [
+                            "Low risk",
+                            "Watch",
+                            "High risk"
+                        ]
+                    },
+                    "factors": {
+                        "type": "array",
+                        "description": "The full arithmetic ships with the score. A client that wants to\nshow only the number can ignore it; a client that wants to\njustify a deposit request cannot get it any other way.",
+                        "items": {}
+                    },
+                    "rationale": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "recommended_action": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "generated_by": {
+                        "type": "string"
+                    },
+                    "model": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "generated_at": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    }
+                },
+                "required": [
+                    "score",
+                    "band",
+                    "band_label",
+                    "factors",
+                    "rationale",
+                    "recommended_action",
+                    "generated_by",
+                    "model",
+                    "generated_at"
+                ],
+                "title": "RiskAssessmentResource"
+            },
+            "ServiceDescriptionRequest": {
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "maxLength": 120
+                    },
+                    "duration_minutes": {
+                        "type": "integer",
+                        "minimum": 5,
+                        "maximum": 600
+                    },
+                    "price_cents": {
+                        "type": "integer",
+                        "minimum": 0
+                    },
+                    "audience": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 200
+                    },
+                    "keywords": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 200
+                    },
+                    "tone": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 60
+                    }
+                },
+                "required": [
+                    "name",
+                    "duration_minutes",
+                    "price_cents"
+                ],
+                "title": "ServiceDescriptionRequest"
+            },
+            "ServiceResource": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "integer"
+                    },
+                    "name": {
+                        "type": "string"
+                    },
+                    "slug": {
+                        "type": "string"
+                    },
+                    "description": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "keywords": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "duration_minutes": {
+                        "type": "integer"
+                    },
+                    "buffer_minutes": {
+                        "type": "integer"
+                    },
+                    "price_cents": {
+                        "type": "integer",
+                        "description": "Minor units and the currency code, never a pre-formatted string.\nFormatting money is the client's job; it knows the locale."
+                    },
+                    "currency": {
+                        "type": "string"
+                    },
+                    "color": {
+                        "type": "string"
+                    },
+                    "is_active": {
+                        "type": "boolean"
+                    },
+                    "requires_deposit": {
+                        "type": "boolean"
+                    },
+                    "deposit_cents": {
+                        "type": "integer"
+                    },
+                    "staff": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/StaffResource"
+                        }
+                    }
+                },
+                "required": [
+                    "id",
+                    "name",
+                    "slug",
+                    "description",
+                    "keywords",
+                    "duration_minutes",
+                    "buffer_minutes",
+                    "price_cents",
+                    "currency",
+                    "color",
+                    "is_active",
+                    "requires_deposit",
+                    "deposit_cents"
+                ],
+                "title": "ServiceResource"
+            },
+            "StaffResource": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "integer"
+                    },
+                    "name": {
+                        "type": "string"
+                    },
+                    "title": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "bio": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "avatar_url": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "timezone": {
+                        "type": "string"
+                    },
+                    "is_active": {
+                        "type": "boolean"
+                    },
+                    "services": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/ServiceResource"
+                        }
+                    },
+                    "availability_rules": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/AvailabilityRuleResource"
+                        }
+                    }
+                },
+                "required": [
+                    "id",
+                    "name",
+                    "title",
+                    "bio",
+                    "avatar_url",
+                    "timezone",
+                    "is_active"
+                ],
+                "title": "StaffResource"
+            },
+            "StoreBookingRequest": {
+                "type": "object",
+                "properties": {
+                    "service_id": {
+                        "type": "integer"
+                    },
+                    "staff_id": {
+                        "type": "integer"
+                    },
+                    "starts_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "description": "ISO-8601 with an offset. \"2026-09-01T09:00:00+02:00\" and\n\"2026-09-01T07:00:00Z\" are the same booking and are stored\nidentically; a bare \"2026-09-01 09:00\" is ambiguous and rejected."
+                    },
+                    "customer_name": {
+                        "type": "string",
+                        "maxLength": 120
+                    },
+                    "customer_email": {
+                        "type": "string",
+                        "format": "email",
+                        "maxLength": 190
+                    },
+                    "customer_phone": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 32
+                    },
+                    "customer_timezone": {
+                        "type": "string"
+                    },
+                    "notes": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 2000
+                    }
+                },
+                "required": [
+                    "service_id",
+                    "staff_id",
+                    "starts_at",
+                    "customer_name",
+                    "customer_email",
+                    "customer_timezone"
+                ],
+                "title": "StoreBookingRequest"
+            },
+            "StoreServiceRequest": {
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "maxLength": 120
+                    },
+                    "slug": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 120
+                    },
+                    "description": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 2000
+                    },
+                    "keywords": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 500
+                    },
+                    "duration_minutes": {
+                        "type": "integer",
+                        "minimum": 5,
+                        "maximum": 600
+                    },
+                    "buffer_minutes": {
+                        "type": [
+                            "integer",
+                            "null"
+                        ],
+                        "minimum": 0,
+                        "maximum": 180
+                    },
+                    "price_cents": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 10000000
+                    },
+                    "color": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "pattern": "^#[0-9a-fA-F]{6}$"
+                    },
+                    "is_active": {
+                        "type": "boolean"
+                    },
+                    "requires_deposit": {
+                        "type": "boolean"
+                    },
+                    "deposit_cents": {
+                        "type": [
+                            "integer",
+                            "null"
+                        ],
+                        "minimum": 0
+                    },
+                    "staff_ids": {
+                        "type": "array",
+                        "items": {
+                            "type": "integer"
+                        }
+                    }
+                },
+                "required": [
+                    "name",
+                    "duration_minutes",
+                    "price_cents"
+                ],
+                "title": "StoreServiceRequest"
+            },
+            "StoreStaffRequest": {
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "maxLength": 120
+                    },
+                    "title": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 120
+                    },
+                    "bio": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 2000
+                    },
+                    "avatar_url": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "format": "uri",
+                        "maxLength": 500
+                    },
+                    "timezone": {
+                        "type": "string"
+                    },
+                    "is_active": {
+                        "type": "boolean"
+                    },
+                    "service_ids": {
+                        "type": "array",
+                        "items": {
+                            "type": "integer"
+                        }
+                    }
+                },
+                "required": [
+                    "name",
+                    "timezone"
+                ],
+                "title": "StoreStaffRequest"
+            },
+            "StoreTimeOffRequest": {
+                "type": "object",
+                "properties": {
+                    "starts_at": {
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    "ends_at": {
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    "reason": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 200
+                    }
+                },
+                "required": [
+                    "starts_at",
+                    "ends_at"
+                ],
+                "title": "StoreTimeOffRequest"
+            },
+            "SyncAvailabilityRulesRequest": {
+                "type": "object",
+                "description": "Replaces a staff member's whole weekly pattern in one call.\n\nA PUT of the complete set rather than per-row POST/DELETE, because a week's\nhours are edited as a unit. It also makes the operation idempotent: the same\npayload sent twice leaves the same schedule.",
+                "properties": {
+                    "rules": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "weekday": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 6
+                                },
+                                "starts_at": {
+                                    "type": "string"
+                                },
+                                "ends_at": {
+                                    "type": "string"
+                                },
+                                "effective_from": {
+                                    "type": [
+                                        "string",
+                                        "null"
+                                    ],
+                                    "format": "date"
+                                },
+                                "effective_until": {
+                                    "type": [
+                                        "string",
+                                        "null"
+                                    ],
+                                    "format": "date"
+                                }
+                            },
+                            "required": [
+                                "weekday",
+                                "starts_at",
+                                "ends_at"
+                            ]
+                        },
+                        "maxItems": 40
+                    }
+                },
+                "required": [
+                    "rules"
+                ],
+                "title": "SyncAvailabilityRulesRequest"
+            },
+            "TimeOffResource": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "integer"
+                    },
+                    "staff_id": {
+                        "type": "integer"
+                    },
+                    "starts_at": {
+                        "type": "string"
+                    },
+                    "ends_at": {
+                        "type": "string"
+                    },
+                    "reason": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    }
+                },
+                "required": [
+                    "id",
+                    "staff_id",
+                    "starts_at",
+                    "ends_at",
+                    "reason"
+                ],
+                "title": "TimeOffResource"
+            },
+            "UpdateBookingStatusRequest": {
+                "type": "object",
+                "properties": {
+                    "status": {
+                        "$ref": "#/components/schemas/BookingStatus"
+                    },
+                    "reason": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 500
+                    }
+                },
+                "required": [
+                    "status"
+                ],
+                "title": "UpdateBookingStatusRequest"
+            },
+            "UpdateServiceRequest": {
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "maxLength": 120
+                    },
+                    "slug": {
+                        "type": "string",
+                        "maxLength": 120
+                    },
+                    "description": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 2000
+                    },
+                    "keywords": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 500
+                    },
+                    "duration_minutes": {
+                        "type": "integer",
+                        "minimum": 5,
+                        "maximum": 600
+                    },
+                    "buffer_minutes": {
+                        "type": [
+                            "integer",
+                            "null"
+                        ],
+                        "minimum": 0,
+                        "maximum": 180
+                    },
+                    "price_cents": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 10000000
+                    },
+                    "color": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "pattern": "^#[0-9a-fA-F]{6}$"
+                    },
+                    "is_active": {
+                        "type": "boolean"
+                    },
+                    "requires_deposit": {
+                        "type": "boolean"
+                    },
+                    "deposit_cents": {
+                        "type": [
+                            "integer",
+                            "null"
+                        ],
+                        "minimum": 0
+                    },
+                    "staff_ids": {
+                        "type": "array",
+                        "items": {
+                            "type": "integer"
+                        }
+                    }
+                },
+                "title": "UpdateServiceRequest"
+            },
+            "UpdateStaffRequest": {
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "maxLength": 120
+                    },
+                    "title": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 120
+                    },
+                    "bio": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 2000
+                    },
+                    "avatar_url": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "format": "uri",
+                        "maxLength": 500
+                    },
+                    "timezone": {
+                        "type": "string"
+                    },
+                    "is_active": {
+                        "type": "boolean"
+                    },
+                    "service_ids": {
+                        "type": "array",
+                        "items": {
+                            "type": "integer"
+                        }
+                    }
+                },
+                "title": "UpdateStaffRequest"
+            }
+        },
+        "responses": {
+            "ValidationException": {
+                "description": "Validation error",
+                "content": {
+                    "application/json": {
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string",
+                                    "description": "Errors overview."
+                                },
+                                "errors": {
+                                    "type": "object",
+                                    "description": "A detailed description of each field that failed validation.",
+                                    "additionalProperties": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string"
+                                        }
+                                    }
+                                }
+                            },
+                            "required": [
+                                "message",
+                                "errors"
+                            ]
+                        }
+                    }
+                }
+            },
+            "AuthorizationException": {
+                "description": "Authorization error",
+                "content": {
+                    "application/json": {
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string",
+                                    "description": "Error overview."
+                                }
+                            },
+                            "required": [
+                                "message"
+                            ]
+                        }
+                    }
+                }
+            },
+            "ModelNotFoundException": {
+                "description": "Not found",
+                "content": {
+                    "application/json": {
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string",
+                                    "description": "Error overview."
+                                }
+                            },
+                            "required": [
+                                "message"
+                            ]
+                        }
+                    }
+                }
+            },
+            "AuthenticationException": {
+                "description": "Unauthenticated",
+                "content": {
+                    "application/json": {
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string",
+                                    "description": "Error overview."
+                                }
+                            },
+                            "required": [
+                                "message"
+                            ]
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

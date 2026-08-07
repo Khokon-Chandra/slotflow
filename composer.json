@@ -8,6 +8,7 @@
     "require": {
         "php": "^8.3",
         "anthropic-ai/sdk": "^0.42.0",
+        "dedoc/scramble": "^0.13.41",
         "inertiajs/inertia-laravel": "^3.3",
         "laravel/framework": "^13.17",
         "laravel/sanctum": "^4.0",
