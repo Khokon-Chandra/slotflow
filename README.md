@@ -191,3 +191,32 @@ This is why the test suite needs no secret, why CI makes no network calls, and w
 | **Docs** | Scramble (OpenAPI 3.1 from the code), Postman collection |
 
 Roughly 8,500 lines of PHP across 102 files, 3,800 lines of TypeScript and Vue across 24 components, and 2,600 lines of tests.
+
+## Tests
+
+```bash
+./vendor/bin/pest
+```
+
+```
+Tests:    161 passed (498 assertions)
+Duration: 4.07s
+```
+
+| Suite | What it covers |
+|---|---|
+| `tests/Unit` | Interval arithmetic and the booking state machine. Pure, no database |
+| `tests/Feature/Domain` | Availability engine (timezones, DST, buffers, grid alignment), risk scorer, the offline parser |
+| `tests/Feature/Api` | Every endpoint group, the error envelope, authorisation from three angles, AI degradation |
+| `tests/Feature/TenantIsolationTest` | The failure that would not crash anything: one business reading another's data |
+| `tests/Concurrency` | Row locks and four forked processes racing for one slot |
+
+The suite runs against **MySQL, not SQLite in memory** — the double-booking guard depends on `SELECT … FOR UPDATE`, and a suite that runs on a database without the feature under test passes for the wrong reason.
+
+`AI_DRIVER=heuristic` throughout, so there is no network call, no secret and no bill.
+
+```bash
+./vendor/bin/phpstan analyse   # level 5, clean
+./vendor/bin/pint --test       # clean
+npm run build                  # vue-tsc runs first; a type error fails the build
+```
