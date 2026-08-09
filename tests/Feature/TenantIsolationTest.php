@@ -110,3 +110,23 @@ it('scopes availability to the requesting tenant\'s services', function (): void
     expect($response)->toHaveErrorCode('validation_failed');
     $response->assertJsonPath('error.fields.service_id.0', fn (string $m) => str_contains($m, 'service id'));
 });
+
+it('keeps the same email separate in two workspaces', function (): void {
+    // One person, two businesses, two accounts. Email is unique per tenant,
+    // not globally.
+    app(TenantContext::class)->set($this->salon->tenant);
+    App\Models\User::factory()->create(['tenant_id' => $this->salon->tenant->id, 'email' => 'shared@example.test']);
+
+    app(TenantContext::class)->set($this->clinic->tenant);
+    $second = App\Models\User::factory()->create(['tenant_id' => $this->clinic->tenant->id, 'email' => 'shared@example.test']);
+
+    expect($second->exists)->toBeTrue();
+    expect(App\Models\User::query()->withoutTenantScope()->where('email', 'shared@example.test')->count())->toBe(2);
+});
+
+it('exposes an explicit escape hatch rather than a silent one', function (): void {
+    app(TenantContext::class)->set($this->salon->tenant);
+
+    expect(Service::query()->count())->toBe(1);
+    expect(Service::query()->withoutTenantScope()->count())->toBe(2);
+});
