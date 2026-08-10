@@ -209,3 +209,70 @@ describe('reading a booking', function (): void {
             ->assertJsonStructure(['data' => ['risk' => ['score', 'band', 'factors', 'generated_by']]]);
     });
 });
+
+describe('status transitions', function (): void {
+    beforeEach(function (): void {
+        $this->reference = $this->postJson('/api/v1/bookings', $this->payload, $this->tenantHeader)
+            ->json('data.reference');
+    });
+
+    it('lets the business complete a booking and updates the customer\'s history', function (): void {
+        Sanctum::actingAs($this->studio->owner());
+
+        $this->patchJson("/api/v1/admin/bookings/{$this->reference}/status", ['status' => 'completed'])
+            ->assertOk()
+            ->assertJsonPath('data.status', 'completed');
+
+        expect(App\Models\Customer::query()->withoutTenantScope()->sole()->completed_count)->toBe(1);
+    });
+
+    it('counts a no-show against the customer', function (): void {
+        Sanctum::actingAs($this->studio->owner());
+
+        $this->patchJson("/api/v1/admin/bookings/{$this->reference}/status", ['status' => 'no_show'])->assertOk();
+
+        expect(App\Models\Customer::query()->withoutTenantScope()->sole()->no_show_count)->toBe(1);
+    });
+
+    it('refuses an illegal transition and says which are allowed', function (): void {
+        Sanctum::actingAs($this->studio->owner());
+
+        $this->patchJson("/api/v1/admin/bookings/{$this->reference}/status", ['status' => 'completed'])->assertOk();
+
+        $response = $this->patchJson("/api/v1/admin/bookings/{$this->reference}/status", ['status' => 'confirmed']);
+
+        $response->assertStatus(422);
+        expect($response)->toHaveErrorCode('invalid_booking_transition');
+        $response->assertJsonPath('error.context.allowed', []);
+    });
+
+    it('frees the slot again once cancelled', function (): void {
+        Sanctum::actingAs($this->studio->owner());
+
+        $this->patchJson("/api/v1/admin/bookings/{$this->reference}/status", ['status' => 'cancelled'])->assertOk();
+
+        // Same slot, new customer — now bookable.
+        $this->postJson('/api/v1/bookings', [...$this->payload, 'customer_email' => 'someone@example.test'], $this->tenantHeader)
+            ->assertCreated();
+    });
+});
+
+it('lists only a staff member\'s own diary', function (): void {
+    $this->postJson('/api/v1/bookings', $this->payload, $this->tenantHeader)->assertCreated();
+
+    $colleague = $this->studio->addColleague();
+
+    Booking::factory()
+        ->startingAt(CarbonImmutable::parse('2026-06-12 14:00', 'Europe/Vienna'), 60)
+        ->create([
+            'tenant_id' => $this->studio->tenant->id,
+            'service_id' => $this->studio->service->id,
+            'staff_id' => $colleague->id,
+        ]);
+
+    Sanctum::actingAs($this->studio->staffUser());
+
+    $this->getJson('/api/v1/bookings')
+        ->assertOk()
+        ->assertJsonCount(1, 'data');
+});
