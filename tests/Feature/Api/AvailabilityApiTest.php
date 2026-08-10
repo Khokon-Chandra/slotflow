@@ -70,3 +70,31 @@ it('caps the range it will search', function (): void {
     expect($response)->toHaveErrorCode('validation_failed');
     $response->assertJsonPath('error.fields.until.0', fn (string $m) => str_contains($m, 'at most'));
 });
+
+it('accepts a range inside the cap', function (): void {
+    $this->getJson(
+        "/api/v1/availability?service_id={$this->studio->service->id}&from=2026-06-11&until=2026-06-25&tz=Europe/Vienna",
+        $this->headers,
+    )->assertOk();
+});
+
+it('needs a workspace', function (): void {
+    $this->getJson("/api/v1/availability?service_id={$this->studio->service->id}&date=2026-06-11&tz=UTC")
+        ->assertStatus(400);
+});
+
+it('rejects an unknown workspace', function (): void {
+    $this->getJson(
+        "/api/v1/availability?service_id={$this->studio->service->id}&date=2026-06-11&tz=UTC",
+        ['X-Tenant' => 'nope'],
+    )->assertNotFound();
+});
+
+it('hides an inactive service', function (): void {
+    $this->studio->service->update(['is_active' => false]);
+
+    $this->getJson(
+        "/api/v1/availability?service_id={$this->studio->service->id}&date=2026-06-11&tz=Europe/Vienna",
+        $this->headers,
+    )->assertNotFound();
+});
