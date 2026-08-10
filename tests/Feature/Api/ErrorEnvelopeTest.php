@@ -49,3 +49,26 @@ it('never names the model class in a 404', function (): void {
     expect($body)->not->toContain('App\\Models');
     expect($body)->not->toContain('Service');
 });
+
+it('uses the same shape for authentication and authorisation', function (): void {
+    $unauth = $this->getJson('/api/v1/auth/me', $this->headers);
+    $unauth->assertUnauthorized()->assertJsonStructure(['error' => ['code', 'message']]);
+    expect($unauth)->toHaveErrorCode('unauthenticated');
+
+    Sanctum::actingAs($this->studio->customerUser());
+    $forbidden = $this->getJson('/api/v1/admin/metrics');
+    $forbidden->assertForbidden()->assertJsonStructure(['error' => ['code', 'message']]);
+    expect($forbidden)->toHaveErrorCode('forbidden');
+});
+
+it('uses the same shape for a missing workspace', function (): void {
+    $response = $this->getJson('/api/v1/services');
+
+    $response->assertStatus(400);
+    expect($response)->toHaveErrorCode('bad_request');
+});
+
+it('leaves browser requests as HTML', function (): void {
+    // The envelope is for API clients. The Inertia admin panel wants a page.
+    $this->get('/nope')->assertNotFound()->assertHeader('content-type', 'text/html; charset=UTF-8');
+});
