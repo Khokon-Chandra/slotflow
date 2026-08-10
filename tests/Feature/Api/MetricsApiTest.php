@@ -44,3 +44,38 @@ it('survives a diary containing only one status', function (): void {
         ->assertJsonPath('data.totals.bookings', 1)
         ->assertJsonPath('data.totals.completed', 0);
 });
+
+it('computes the no-show rate over resolved appointments only', function (): void {
+    $make = function (BookingStatus $status, string $at, int $price): void {
+        Booking::factory()
+            ->startingAt(CarbonImmutable::parse($at, 'Europe/Vienna'), 60)
+            ->status($status)
+            ->create([
+                'tenant_id' => $this->studio->tenant->id,
+                'service_id' => $this->studio->service->id,
+                'staff_id' => $this->studio->staff->id,
+                'price_cents' => $price,
+            ]);
+    };
+
+    $make(BookingStatus::Completed, '2026-06-01 10:00', 5000);
+    $make(BookingStatus::Completed, '2026-06-02 10:00', 5000);
+    $make(BookingStatus::Completed, '2026-06-03 10:00', 5000);
+    $make(BookingStatus::NoShow, '2026-06-04 10:00', 5000);
+    // A cancellation is not a no-show and must not be in the denominator.
+    $make(BookingStatus::Cancelled, '2026-06-05 10:00', 5000);
+
+    $this->getJson('/api/v1/admin/metrics')
+        ->assertOk()
+        ->assertJsonPath('data.no_show_rate', 0.25)             // 1 of 4 resolved
+        ->assertJsonPath('data.revenue.realised_cents', 15000)
+        ->assertJsonPath('data.revenue.lost_to_no_shows_cents', 5000);
+});
+
+it('reports today alongside the rolling window', function (): void {
+    $this->getJson('/api/v1/admin/metrics')
+        ->assertOk()
+        ->assertJsonStructure([
+            'data' => ['window_days', 'totals', 'revenue', 'no_show_rate', 'today' => ['date', 'booking_count']],
+        ]);
+});
