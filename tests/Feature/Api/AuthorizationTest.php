@@ -108,3 +108,19 @@ it('deletes a service nobody is booked into', function (): void {
 
     expect(Service::query()->count())->toBe(0);
 });
+
+it('keeps the admin diary behind the admin gate', function (): void {
+    Sanctum::actingAs($this->studio->customerUser());
+
+    $this->getJson('/api/v1/admin/bookings')->assertForbidden();
+    $this->getJson('/api/v1/admin/metrics')->assertForbidden();
+    $this->getJson('/api/v1/ai/daily-briefing')->assertForbidden();
+});
+
+it('opens the admin diary to staff and owners', function (): void {
+    Sanctum::actingAs($this->studio->staffUser());
+    $this->getJson('/api/v1/admin/bookings')->assertOk();
+
+    Sanctum::actingAs($this->studio->owner());
+    $this->getJson('/api/v1/admin/metrics')->assertOk();
+});
