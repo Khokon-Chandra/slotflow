@@ -205,3 +205,29 @@ it('never scores outside 0 to 100', function (): void {
     expect($high->score)->toBeLessThanOrEqual(100)->toBeGreaterThanOrEqual(0);
     expect($low->score)->toBeLessThanOrEqual(100)->toBeGreaterThanOrEqual(0);
 });
+
+it('stores the assessment with a rationale and its provenance', function (): void {
+    $customer = Customer::factory()->create(['tenant_id' => $this->studio->tenant->id]);
+    $booking = bookingFor($this->studio, $customer, '2026-06-15 14:00');
+
+    $assessment = $this->scorer->scoreAndStore($booking);
+
+    expect($assessment->score)->toBe($this->scorer->score($booking)->score);
+    expect($assessment->rationale)->not->toBeEmpty();
+    expect($assessment->recommended_action)->not->toBeEmpty();
+
+    // AI_DRIVER=heuristic in the test environment, so this must say so rather
+    // than claim a model wrote it.
+    expect($assessment->generated_by)->toBe('heuristic');
+    expect($assessment->model)->toBeNull();
+});
+
+it('re-scoring the same booking replaces rather than duplicates', function (): void {
+    $customer = Customer::factory()->create(['tenant_id' => $this->studio->tenant->id]);
+    $booking = bookingFor($this->studio, $customer, '2026-06-15 14:00');
+
+    $this->scorer->scoreAndStore($booking);
+    $this->scorer->scoreAndStore($booking);
+
+    expect(App\Models\BookingRiskAssessment::query()->where('booking_id', $booking->id)->count())->toBe(1);
+});
