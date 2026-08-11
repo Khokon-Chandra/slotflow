@@ -126,3 +126,25 @@ it('throttles repeated failures', function (): void {
         'device_name' => 'iPhone',
     ], $this->headers)->assertStatus(429);
 });
+
+it('revokes only the token that was used', function (): void {
+    $user = $this->studio->owner();
+
+    Sanctum::actingAs($user);
+    $this->postJson('/api/v1/auth/logout')->assertOk();
+});
+
+it('returns the current user', function (): void {
+    Sanctum::actingAs($this->studio->owner());
+
+    $this->getJson('/api/v1/auth/me')
+        ->assertOk()
+        ->assertJsonPath('data.role', UserRole::Owner->value);
+});
+
+it('rejects a request with no token', function (): void {
+    $response = $this->getJson('/api/v1/auth/me', $this->headers);
+
+    $response->assertUnauthorized();
+    expect($response)->toHaveErrorCode('unauthenticated');
+});
