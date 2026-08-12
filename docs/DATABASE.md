@@ -213,3 +213,51 @@ INDEX (created_at)
 The first serves the admin usage page; the second the monthly spend guard, which sums across all tenants.
 
 ---
+
+## Foreign keys
+
+| Relationship | On delete | Why |
+|---|---|---|
+| `* → tenants` | `cascade` | Deleting a workspace removes everything in it |
+| `bookings → services` | `restrict` | A deleted service would orphan appointments people have been promised. The API returns `409` and tells you to deactivate instead |
+| `bookings → staff` | `restrict` | Same |
+| `bookings → customers` | `cascade` | Erasing a customer erases their bookings — the shape a deletion request takes |
+| `staff → users` | `set null` | A staff member's diary outlives their login |
+
+`restrict` on services and staff is the interesting one. It makes an ordinary delete fail loudly at the database rather than quietly at the application, so the safety property holds even for a query run by hand at 2am.
+
+---
+
+## Migrations
+
+Thirteen, in dependency order:
+
+```
+0001_01_01_000001  cache
+0001_01_01_000002  jobs
+2026_01_01_000000  tenants
+2026_01_01_000100  users, password_reset_tokens, sessions
+2026_01_01_000200  services
+2026_01_01_000300  staff, service_staff
+2026_01_01_000400  availability_rules
+2026_01_01_000500  time_off
+2026_01_01_000600  customers
+2026_01_01_000700  bookings
+2026_01_01_000800  booking_risk_assessments
+2026_01_01_000900  ai_interactions
+2026_01_01_001200  personal_access_tokens
+```
+
+Each migration carries a comment explaining the columns whose purpose is not obvious from the name — the buffer split, the wall-clock times, the denormalised counters. A schema is read far more often than it is written.
+
+---
+
+## Seed data
+
+`php artisan demo:seed --fresh` builds Bright Lane Studio: three bookable staff (one remote, in `Asia/Kolkata`), six services, ~570 bookings across 180 days of history plus three weeks ahead, and a risk assessment on every upcoming one.
+
+The history is shaped, not uniform: closed Sundays, quiet Mondays, roughly 8% no-shows and 10% cancellations. Seed data that is too tidy makes a booking system look like it works when it does not — every interesting bug lives in the mess.
+
+A second workspace, **North Dental**, is seeded alongside it. Nothing links to it; it exists so the tenant-isolation tests run against real data rather than an empty table.
+
+Every business, person and booking is invented.
