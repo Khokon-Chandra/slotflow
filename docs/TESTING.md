@@ -62,3 +62,122 @@ it('serves an answer when the AI client throws', function () {
 ```
 
 ---
+
+## The one worth reading
+
+[`tests/Concurrency/ConcurrentBookingTest.php`](../tests/Concurrency/ConcurrentBookingTest.php), five tests from cheapest to most convincing.
+
+**1–3. Sequential.** The overlap check rejects an identical slot, rejects a merely overlapping one, and *allows* a booking that starts exactly when the previous one ends. That third case is half-open intervals working: getting it wrong makes back-to-back appointments unbookable, which is quieter than double booking and costs just as much.
+
+**4. The lock is real.** Two genuinely separate MySQL sessions. Connection A opens a transaction and locks the staff row exactly as `BookingService` does; connection B, with `innodb_lock_wait_timeout = 1`, asks for the same lock and must time out. If the lock were advisory, on the wrong row, or absent, B would succeed immediately.
+
+**5. The race.** Four forked processes attempt the identical booking at the same moment against the same database.
+
+```php
+$pid = pcntl_fork();
+
+if ($pid === 0) {
+    // A brand-new named connection. Two processes writing to one inherited
+    // socket corrupts both.
+    config()->set('database.connections.child', config('database.connections.mysql'));
+    DB::setDefaultConnection('child');
+
+    try   { $bookings->create($data); $outcome = 'won'; }
+    catch (SlotUnavailableException) { $outcome = 'lost'; }
+
+    file_put_contents("{$dir}/{$i}", $outcome);
+    posix_kill(posix_getpid(), SIGKILL);   // no shutdown handlers in a child
+}
+```
+
+Exactly one winner, three `409`s, one row in the database.
+
+### Proving the test is not vacuous
+
+A concurrency test that passes whether or not the guard exists is decoration. Comment out the `lockForUpdate()` line and run it:
+
+```
+✗ it lets exactly one of several simultaneous requests win the slot
+  Expected exactly one winner, got 4. Outcomes: won, won, won, won
+```
+
+Four processes, four bookings, one chair. Restore the line and it passes again. That difference is the whole argument for the design.
+
+---
+
+## What the domain tests cover
+
+**[Availability](../tests/Feature/Domain/AvailabilityEngineTest.php)** — 19 tests. The slot grid, closing time, buffers fitting (and not fitting), split shifts, time off, minimum notice, the booking horizon, rules not yet in force, grid re-alignment after an awkward gap, merging several staff diaries.
+
+Plus timezones, which is where the interesting failures live:
+
+- the same instant rendered in two zones,
+- a staff member's hours interpreted in *their* zone while the caller reads another,
+- the spring-forward window really being an hour shorter,
+- the autumn-back window an hour longer,
+- and a 09:00 local appointment being `08:00Z` in March and `07:00Z` in April.
+
+The DST tests compare against an ordinary week rather than asserting a hard-coded count, so they are about daylight saving rather than about the slot grid.
+
+**[Risk](../tests/Feature/Domain/NoShowRiskScorerTest.php)** — 12 tests, one per factor plus a determinism test that scores the same booking twice and asserts identical output. That test is the argument for computing the score in PHP.
+
+**[The offline parser](../tests/Feature/Domain/BookingIntentHeuristicTest.php)** — 22 tests over dates, times, service matching and the end-to-end assistant, including that it never writes a booking and that it asks rather than guesses.
+
+**[Tenant isolation](../tests/Feature/TenantIsolationTest.php)** — 8 tests against two fully-seeded workspaces. A leak test against an empty second tenant tests nothing.
+
+---
+
+## Static analysis
+
+```bash
+./vendor/bin/phpstan analyse   # larastan, level 5 — clean
+./vendor/bin/pint --test       # clean
+npm run build                  # vue-tsc first; a type error fails the build
+```
+
+PHPStan found 51 real issues on its first clean run, and every one was fixed rather than baselined: incomplete model docblocks, redundant null checks, aggregate columns read as model attributes, untyped closures. The two `ignoreErrors` entries that remain are narrow and carry a comment explaining why the analyser is wrong — Laravel's `Seeder::$command` docblock claims non-nullable for a property that is genuinely unset outside the console.
+
+---
+
+## Bugs these tools actually caught
+
+Worth listing, because "we have tests" is a claim and this is evidence.
+
+| Found by | What it was |
+|---|---|
+| `Model::shouldBeStrict()` | `ServiceResource` lazy-loading `$service->tenant` — one query per row |
+| Pest, once a JSON reporter was removed | `BookingWindowException` declared a readonly `$code`, colliding with `Exception::$code`. A **fatal at class load**: every insufficient-notice and booking-horizon path was dead |
+| A test expecting 422 | The booking policy was doing the state machine's job, so illegal transitions returned 403 with no explanation |
+| The tenant isolation test | `exists:services,id` validated across all tenants — "valid, then 404" is distinguishable from "invalid", which is enough to enumerate |
+| A skipped test | An over-wide availability range threw from a constructor and became a 500 instead of a 422 |
+| An empty-metrics test | `Collection` offset access without `??` semantics threw on a workspace with no completed bookings |
+
+The second one is the reason this project has no custom test reporter. It was swallowing fatal errors and reporting an exit code with no output; removing it made a class-load failure visible immediately.
+
+---
+
+## Writing a new test
+
+```php
+use Tests\Support\StudioFactory;
+
+beforeEach(function (): void {
+    // Fixed clock. Nothing here should depend on when it runs.
+    CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-06-10 06:00:00', 'UTC'));
+
+    // Tenant, staff, service, and a tenant bound in TenantContext.
+    $this->studio = (new StudioFactory(durationMinutes: 60))->openEveryDay('09:00', '17:00');
+});
+
+afterEach(fn () => CarbonImmutable::setTestNow());
+```
+
+[`StudioFactory`](../tests/Support/StudioFactory.php) exists because a test that hand-rolls a tenant, a service, a staff member and a week of hours spends most of its lines on setup and buries the assertion.
+
+Almost every model is behind a tenant global scope, so a test that forgets to bind one sees an empty database and a confusing failure. `StudioFactory` binds it; `TestCase::tearDown()` clears it.
+
+There is one custom expectation:
+
+```php
+expect($response)->toHaveErrorCode('slot_unavailable');
+```
