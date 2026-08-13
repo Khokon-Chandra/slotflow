@@ -33,3 +33,25 @@ The test suite needs a `slotflow_testing` database. `docker compose up -d` creat
 ```bash
 mysql -e "CREATE DATABASE slotflow_testing"
 ```
+
+## House style
+
+- **`declare(strict_types=1)` everywhere.** Enforced by Pint.
+- **Business rules go in `app/Domain`.** A controller validates, authorises, calls one domain service, renders a resource.
+- **Comments explain *why*.** What the code does is visible in the code. Why a lock is on the staff row rather than the booking range is not.
+- **Every AI task needs a heuristic implementation.** No exceptions — it is what makes the project runnable and CI free of secrets.
+- **New behaviour needs a test that fails without it.** For the concurrency guard specifically, the bar is a test that fails when the lock is removed.
+- **No baselines.** If PHPStan finds something, fix it or add a narrow, commented ignore that explains why the analyser is wrong.
+
+## Commits
+
+Conventional-commit prefixes, one concern per commit:
+
+```
+feat(availability): support overnight shifts
+fix(booking): reject overlapping slots when a buffer applies
+test(concurrency): assert the row lock is exclusive
+docs(ai): explain the fallback driver
+```
+
+The history is meant to be readable. Squash the exploration; keep the decisions.
