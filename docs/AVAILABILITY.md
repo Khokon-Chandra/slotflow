@@ -159,3 +159,56 @@ Bright Lane Studio is in `Europe/Vienna`. Dr. Priya Nair, its trichologist, work
 She is in the seed data on purpose. A timezone bug that only appears across zones is a timezone bug you will ship.
 
 ---
+
+## Daylight saving
+
+Both transitions have tests, and both assert against an ordinary week rather than a hard-coded count — so the test is about DST, not about the slot grid.
+
+**Spring forward.** 29 March 2026, Europe/Vienna: 02:00 becomes 03:00. A 01:00–05:00 shift is three real hours, not four, and the engine offers exactly four fewer slots than the Sunday before. Those minutes did not exist; offering them would mean selling an appointment at a time that never happened.
+
+**Autumn back.** 25 October 2026: 03:00 becomes 02:00. The same shift is five hours, and the engine offers four more slots.
+
+**And the boundary.** A 09:00 Vienna appointment is `08:00Z` in March and `07:00Z` in April. The local time is stable across the transition; the instant is not. Getting that backwards is the classic version of this bug.
+
+None of this needs special-casing in the engine. It falls out of parsing wall-clock time in the correct zone and letting the timezone database answer.
+
+---
+
+## Caching
+
+Computed availability is cached for 60 seconds, keyed by tenant, a version counter, and a fragment covering the service, date range, timezone and staff filter.
+
+Invalidation bumps the version counter — one atomic increment, cannot miss a key, and stale entries expire on their own TTL. Deleting keys means enumerating them, and the day the enumeration misses one you are selling time that is already sold.
+
+The counter is bumped on every booking, availability-rule change and time-off change.
+
+Measured on the seeded workspace (`php artisan demo:bench`):
+
+| | Median | Queries |
+|---|---:|---:|
+| 7 days, cold | 16.4 ms | 13 |
+| 7 days, warm | 0.8 ms | 2 |
+| 30 days, cold | 44.0 ms | 13 |
+
+**The query count does not grow with the range.** Rules, time off and bookings are each fetched once for the whole window; only the interval arithmetic grows. A `slots` table would read a row per candidate.
+
+---
+
+## What the cache does *not* protect
+
+Availability is a read. It can be stale by up to 60 seconds, and a customer can be shown a slot that has just gone.
+
+That is fine, and it is why [`BookingService`](../app/Domain/Booking/BookingService.php) re-checks inside a transaction with a row lock before inserting. The cache makes the page fast; the lock makes the booking correct. Confusing the two — trusting the read path to prevent double booking — is the mistake this design is built around.
+
+---
+
+## Limits, honestly
+
+- **One service per booking.** No packages, no "cut and colour together". The schema would take a join table; the engine would need to compose durations.
+- **No resource constraints.** A room, a chair or a machine that two staff members share is not modelled. Availability is per person.
+- **No recurring appointments.** Every booking is a single instant.
+- **The 31-day cap is a real cap.** Expanding a year of rules for a large team in one request is a query nobody should be able to ask for over HTTP.
+
+---
+
+Next: [AI.md](AI.md) — how the assisted features are built and bounded.
