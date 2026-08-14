@@ -220,3 +220,48 @@ The suite runs against **MySQL, not SQLite in memory** — the double-booking gu
 ./vendor/bin/pint --test       # clean
 npm run build                  # vue-tsc runs first; a type error fails the build
 ```
+
+## Performance
+
+Every number below came out of `php artisan demo:bench`, against the seeded 570-booking workspace. Run it yourself; the absolutes depend on your machine, the ratios do not.
+
+| | Median | Queries |
+|---|---:|---:|
+| Availability — 7 days, all staff, cold | 16.4 ms | 13 |
+| Availability — 7 days, warm cache | 0.8 ms | 2 |
+| Availability — 30 days, all staff, cold | 44.0 ms | 13 |
+| Admin diary — 25 rows, eager loaded | 4.2 ms | 5 |
+| Admin diary — the same 25 rows, lazily loaded | 17.1 ms | **101** |
+| Dashboard statistics for today | 1.5 ms | 6 |
+
+Two things worth pulling out.
+
+**The query count does not grow with the range.** Seven days and thirty days both cost 13 queries; only the in-memory interval arithmetic grows. That is what computing from rules buys you — the alternative reads a row per slot.
+
+**5 queries against 101 is the same page either way.** The last two rows render identical output; the difference is one `with()`. On six seeded services it is invisible, and at fifty thousand bookings it is the whole problem. `Model::shouldBeStrict()` is on in local, so a lazy load is an exception during development rather than a slow page six months later — it caught two real N+1s while this was being built.
+
+## Documentation
+
+| | |
+|---|---|
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Layers, request lifecycle, multi-tenancy, where a change goes |
+| [docs/AVAILABILITY.md](docs/AVAILABILITY.md) | The algorithm, worked examples, timezone and DST rules |
+| [docs/AI.md](docs/AI.md) | Driver design, prompts, structured outputs, cost, safety, observability |
+| [docs/API.md](docs/API.md) | Endpoint reference, conventions, error codes, worked examples |
+| [docs/DATABASE.md](docs/DATABASE.md) | Schema, ERD, index rationale |
+| [docs/DECISIONS.md](docs/DECISIONS.md) | Decision records — what was chosen, what was rejected, and what would change it |
+| [docs/TESTING.md](docs/TESTING.md) | How the suite is structured and why the concurrency test forks |
+| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Running it somewhere real |
+
+## What this is not
+
+Being straight about the edges is part of the work.
+
+- **Not a product.** No payments, no email delivery, no SMS, no calendar sync, no recurring appointments. The scaffolding is there; the integrations are not.
+- **The risk weights are illustrative defaults**, chosen to be explainable rather than fitted to data. On a live deployment they are the first thing you would replace, once the business has enough history to fit them properly. The admin panel says so too.
+- **Multi-tenancy is a shared schema with a scoped column.** That is the right call at this size and the wrong one past a certain scale; [docs/DECISIONS.md](docs/DECISIONS.md) says where the line is.
+- **Every business, person, booking and review in the seed data is invented.**
+
+## Licence
+
+MIT — see [LICENSE](LICENSE). Yours to take apart.
