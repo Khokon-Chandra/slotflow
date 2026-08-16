@@ -7,6 +7,8 @@ namespace App\Providers;
 use App\Models\Booking;
 use App\Models\Service;
 use App\Models\Staff;
+use App\Models\TenantAiSettings;
+use App\Policies\AiSettingsPolicy;
 use App\Policies\BookingPolicy;
 use App\Policies\ServicePolicy;
 use App\Policies\StaffPolicy;
@@ -41,6 +43,7 @@ final class AppServiceProvider extends ServiceProvider
         DB::prohibitDestructiveCommands($this->app->isProduction());
 
         Gate::policy(Booking::class, BookingPolicy::class);
+        Gate::policy(TenantAiSettings::class, AiSettingsPolicy::class);
         Gate::policy(Service::class, ServicePolicy::class);
         Gate::policy(Staff::class, StaffPolicy::class);
     }

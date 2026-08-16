@@ -4,34 +4,40 @@ declare(strict_types=1);
 
 namespace App\Ai\Drivers;
 
-use Anthropic\Client;
 use Anthropic\Messages\Message;
 use Anthropic\RequestOptions;
 use App\Ai\AiRequest;
 use App\Ai\AiResponse;
 use App\Ai\AiUsage;
 use App\Ai\Contracts\AiClient;
+use App\Ai\Credentials\AiCredentials;
+use App\Ai\Credentials\ClaudeClientFactory;
 use JsonException;
 use RuntimeException;
 
 /**
  * Calls the Anthropic Messages API.
  *
- * Three choices worth pointing at:
+ * Four choices worth pointing at:
  *
- *  1. **Structured output, not "please reply with JSON".** Every task that
+ *  1. **Credentials are resolved per call, not injected once.** A workspace
+ *     may bring its own key, and a queue worker handles jobs for several
+ *     workspaces in one process. A client captured at construction would send
+ *     one tenant's request on another tenant's key — and would do it silently.
+ *
+ *  2. **Structured output, not "please reply with JSON".** Every task that
  *     needs data passes a JSON schema through `outputConfig.format`, so the
  *     response is constrained at generation time. Asking politely in the
- *     prompt and then hoping `json_decode` works is the single most common
- *     way LLM features fail in production.
+ *     prompt and hoping `json_decode` works is the single most common way LLM
+ *     features fail in production.
  *
- *  2. **Effort `low` by default.** These tasks are short, well-specified
+ *  3. **Effort `low` by default.** These tasks are short, well-specified
  *     extractions running inside a web request. Effort is the dial that
  *     matters far more than model choice for latency and spend on work like
  *     this; the model stays capable, it just does not deliberate over
  *     "next Tuesday afternoon".
  *
- *  3. **A short timeout and one retry.** A booking page cannot wait 60
+ *  4. **A short timeout and one retry.** A booking page cannot wait 60
  *     seconds. When the budget is gone the manager above catches the failure
  *     and serves the heuristic result, which is a worse answer arriving on
  *     time rather than a better one arriving never.
@@ -39,8 +45,8 @@ use RuntimeException;
 final class ClaudeClient implements AiClient
 {
     public function __construct(
-        private readonly Client $client,
-        private readonly string $model,
+        private readonly ClaudeClientFactory $clients,
+        private readonly AiCredentials $credentials,
     ) {}
 
     public function name(): string
@@ -50,14 +56,21 @@ final class ClaudeClient implements AiClient
 
     public function run(AiRequest $request): AiResponse
     {
+        $apiKey = $this->credentials->apiKey();
+
+        if ($apiKey === null) {
+            throw new RuntimeException('No Anthropic API key is configured for this workspace.');
+        }
+
+        $model = $this->credentials->model();
         $startedAt = hrtime(true);
 
-        $message = $this->client->messages->create(
+        $message = $this->clients->for($apiKey)->messages->create(
             maxTokens: $request->maxTokens(),
             messages: [
                 ['role' => 'user', 'content' => $request->prompt],
             ],
-            model: $this->model,
+            model: $model,
             outputConfig: $this->outputConfig($request),
             system: $request->system,
             requestOptions: RequestOptions::with(
@@ -75,7 +88,7 @@ final class ClaudeClient implements AiClient
             driver: $this->name(),
             model: $message->model,
             usage: AiUsage::priced(
-                model: $this->model,
+                model: $model,
                 inputTokens: $message->usage->inputTokens,
                 outputTokens: $message->usage->outputTokens,
                 cachedInputTokens: $message->usage->cacheReadInputTokens ?? 0,

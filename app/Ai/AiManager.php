@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Ai;
 
 use App\Ai\Contracts\AiClient;
+use App\Ai\Credentials\AiCredentials;
 use App\Ai\Drivers\ClaudeClient;
 use App\Ai\Drivers\HeuristicClient;
 use App\Models\AiInteraction;
@@ -34,6 +35,7 @@ final class AiManager implements AiClient
     public function __construct(
         private readonly Container $container,
         private readonly TenantContext $tenants,
+        private readonly AiCredentials $credentials,
     ) {}
 
     public function name(): string
@@ -125,13 +127,23 @@ final class AiManager implements AiClient
     private function shouldUseClaude(): bool
     {
         $driver = (string) config('ai.driver', 'auto');
-        $hasKey = filled(config('ai.claude.api_key'));
 
         return match ($driver) {
             'claude' => true,
             'heuristic' => false,
-            default => $hasKey,
+            // The key may be the workspace's own or the platform's — see
+            // App\Ai\Credentials\AiCredentials.
+            default => $this->credentials->hasKey(),
         };
+    }
+
+    /**
+     * Where the credential in use came from: "tenant", "platform" or "none".
+     * Surfaced in the admin panel so an owner can tell who is paying.
+     */
+    public function keySource(): string
+    {
+        return $this->credentials->source();
     }
 
     private function offlineReason(): ?string
@@ -164,17 +176,22 @@ final class AiManager implements AiClient
      */
     private function withinBudget(): bool
     {
-        $budgetUsd = (float) config('ai.monthly_budget_usd', 25);
+        $budgetUsd = $this->credentials->monthlyBudgetUsd();
 
         if ($budgetUsd <= 0) {
             return true;
         }
 
+        // Scoped to the workspace, because the ceiling is now per workspace.
+        // A shared counter would let a busy tenant spend a quiet one's budget.
+        $tenantId = $this->tenants->id();
+
         $spentMicros = Cache::remember(
-            'ai:spend:'.now()->format('Y-m'),
+            sprintf('ai:spend:%s:%s', $tenantId ?? 'platform', now()->format('Y-m')),
             60,
             fn (): int => (int) AiInteraction::query()
                 ->withoutTenantScope()
+                ->when($tenantId !== null, fn ($q) => $q->where('tenant_id', $tenantId))
                 ->thisMonth()
                 ->billable()
                 ->sum('cost_micros'),
