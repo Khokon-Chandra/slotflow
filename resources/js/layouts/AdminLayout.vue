@@ -50,12 +50,30 @@ const signOut = (): void => {
 
 <template>
     <div class="min-h-full lg:grid lg:grid-cols-[16rem_1fr]">
-        <!-- Sidebar -->
+        <!--
+            Sidebar — exactly one viewport tall, at every breakpoint.
+
+            Mobile: `fixed inset-y-0` is an off-canvas drawer.
+
+            Desktop: `sticky` + `h-dvh` + `self-start`, not `static`. As a
+            plain grid item it stretched to the *row* height, which is the
+            height of the content column — so on a long page (the diary at 20
+            rows) the sidebar became taller than the screen, scrolled away with
+            the page, and the account block pinned to its bottom ended up far
+            below the fold.
+
+            `self-start` is load-bearing: a grid item stretched to fill its row
+            has nowhere to stick, so sticky silently does nothing without it.
+
+            Flex column rather than an absolutely positioned footer, so the nav
+            can scroll on its own when the menu outgrows a short screen instead
+            of rendering behind the account block.
+        -->
         <aside
-            class="fixed inset-y-0 left-0 z-50 w-64 border-r border-line bg-surface transition-transform lg:static lg:translate-x-0"
+            class="fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-line bg-surface transition-transform lg:sticky lg:top-0 lg:h-dvh lg:translate-x-0 lg:self-start"
             :class="mobileOpen ? 'translate-x-0' : '-translate-x-full'"
         >
-            <div class="flex h-16 items-center justify-between border-b border-line px-4">
+            <div class="flex h-16 shrink-0 items-center justify-between border-b border-line px-4">
                 <Link href="/admin" class="flex items-center gap-2.5">
                     <span class="flex size-8 items-center justify-center rounded-lg bg-brand text-brand-ink">
                         <CalendarClock class="size-4" />
@@ -75,7 +93,7 @@ const signOut = (): void => {
                 </button>
             </div>
 
-            <nav class="space-y-0.5 p-3">
+            <nav class="flex-1 space-y-0.5 overflow-y-auto p-3">
                 <Link
                     v-for="item in nav"
                     :key="item.href"
@@ -93,7 +111,7 @@ const signOut = (): void => {
                 </Link>
             </nav>
 
-            <div class="absolute inset-x-0 bottom-0 space-y-3 border-t border-line p-3">
+            <div class="shrink-0 space-y-3 border-t border-line p-3">
                 <Link
                     href="/"
                     class="flex items-center gap-2 rounded-lg px-3 py-2 text-xs text-ink-muted transition hover:bg-surface-sunken hover:text-ink"
