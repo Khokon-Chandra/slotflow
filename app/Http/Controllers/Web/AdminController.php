@@ -4,16 +4,20 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Web;
 
+use App\Ai\AiManager;
+use App\Ai\Credentials\AiCredentials;
 use App\Ai\Tasks\GenerateDailyBriefing;
 use App\Domain\Reporting\DayStatistics;
 use App\Enums\BookingStatus;
 use App\Enums\RiskBand;
 use App\Http\Controllers\Controller;
+use App\Http\Resources\AiSettingsResource;
 use App\Models\AiInteraction;
 use App\Models\AvailabilityRule;
 use App\Models\Booking;
 use App\Models\Service;
 use App\Models\Staff;
+use App\Models\TenantAiSettings;
 use App\Models\TimeOff;
 use App\Support\TenantContext;
 use Carbon\CarbonImmutable;
@@ -37,6 +41,7 @@ final class AdminController extends Controller
         private readonly TenantContext $tenants,
         private readonly DayStatistics $statistics,
         private readonly GenerateDailyBriefing $briefing,
+        private readonly AiCredentials $credentials,
     ) {}
 
     public function dashboard(Request $request): Response
@@ -280,12 +285,16 @@ final class AdminController extends Controller
                 'created_at' => $row->created_at?->toIso8601String(),
             ]);
 
+        $isOwner = $request->user()->isOwner();
+
         return Inertia::render('Admin/AiUsage', [
             'days' => $days,
             'byTask' => $byTask,
             'recent' => $recent,
             'budget' => [
-                'monthly_usd' => (float) config('ai.monthly_budget_usd'),
+                // The ceiling in force for this workspace, not the platform
+                // default — they diverge the moment an owner sets their own.
+                'monthly_usd' => $this->credentials->monthlyBudgetUsd(),
                 'spent_this_month_usd' => round(
                     (int) AiInteraction::query()->thisMonth()->billable()->sum('cost_micros') / 1_000_000,
                     4,
@@ -293,10 +302,27 @@ final class AdminController extends Controller
             ],
             'config' => [
                 'driver' => (string) config('ai.driver'),
-                'model' => (string) config('ai.claude.model'),
+                'model' => $this->credentials->model(),
                 'effort' => (string) config('ai.claude.effort'),
                 'cache_ttl' => (int) config('ai.cache_ttl'),
+                'key_source' => $this->credentials->source(),
             ],
+
+            // Credentials are the owner's business. Staff read the usage
+            // figures on this page and see nothing about the key that pays
+            // for them — the same line a payment method sits on.
+            'canManageCredentials' => $isOwner,
+            'aiSettings' => $isOwner
+                ? new AiSettingsResource($this->aiSettings()->load('setBy'))
+                : null,
+            'aiEffective' => $isOwner ? [
+                'driver' => app(AiManager::class)->isLive() ? 'claude' : 'heuristic',
+                'key_source' => $this->credentials->source(),
+                'model' => $this->credentials->model(),
+                'monthly_budget_usd' => $this->credentials->monthlyBudgetUsd(),
+                'configured_driver' => (string) config('ai.driver'),
+            ] : null,
+            'aiModels' => $isOwner ? $this->credentials->availableModels() : [],
         ]);
     }
 
@@ -322,6 +348,17 @@ final class AdminController extends Controller
                 'cancellation_window_hours' => (int) $tenant->setting('booking.cancellation_window_hours'),
             ],
         ]);
+    }
+
+    /**
+     * This workspace's credential row, unsaved if it does not exist yet, so
+     * the page has the same shape whether or not anything is configured.
+     */
+    private function aiSettings(): TenantAiSettings
+    {
+        return TenantAiSettings::query()
+            ->withoutTenantScope()
+            ->firstOrNew(['tenant_id' => $this->tenants->require()->id]);
     }
 
     /**
