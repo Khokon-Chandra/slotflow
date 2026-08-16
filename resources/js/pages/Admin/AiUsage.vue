@@ -2,14 +2,21 @@
 import { computed } from 'vue';
 import { Head } from '@inertiajs/vue3';
 import { Sparkles, CircuitBoard, Gauge, Wallet, Timer } from 'lucide-vue-next';
+import { router } from '@inertiajs/vue3';
 import AdminLayout from '@/layouts/AdminLayout.vue';
+import AiCredentialCard from '@/components/AiCredentialCard.vue';
 import AppCard from '@/components/ui/AppCard.vue';
 import AppBadge from '@/components/ui/AppBadge.vue';
 import AppEmpty from '@/components/ui/AppEmpty.vue';
 import StatTile from '@/components/StatTile.vue';
+import type { AiSettings, AiEffectiveConfig, AiModelOption } from '@/types';
 
 const props = defineProps<{
     days: number;
+    canManageCredentials: boolean;
+    aiSettings: AiSettings | null;
+    aiEffective: AiEffectiveConfig | null;
+    aiModels: AiModelOption[];
     byTask: {
         task: string;
         task_label: string;
@@ -35,7 +42,7 @@ const props = defineProps<{
         created_at: string | null;
     }[];
     budget: { monthly_usd: number; spent_this_month_usd: number };
-    config: { driver: string; model: string; effort: string; cache_ttl: number };
+    config: { driver: string; model: string; effort: string; cache_ttl: number; key_source: string };
 }>();
 
 const totals = computed(() => {
@@ -58,6 +65,13 @@ const budgetUsed = computed(() =>
         ? 0
         : Math.min(100, (props.budget.spent_this_month_usd / props.budget.monthly_usd) * 100),
 );
+
+// The credential drives the budget bar, the configuration list and the
+// "AI live" badge in the layout, so a change means reloading the page props
+// rather than patching three places by hand.
+const onCredentialChange = (): void => {
+    router.reload({ only: ['budget', 'config', 'aiSettings', 'aiEffective'] });
+};
 
 const usd = (value: number): string => (value === 0 ? '$0.00' : `$${value.toFixed(value < 0.01 ? 5 : 2)}`);
 
@@ -119,6 +133,14 @@ const when = (iso: string | null): string =>
                     <template #icon><CircuitBoard class="size-4 text-ink-subtle" /></template>
                 </StatTile>
             </div>
+
+            <AiCredentialCard
+                v-if="canManageCredentials && aiSettings && aiEffective"
+                :settings="aiSettings"
+                :effective="aiEffective"
+                :models="aiModels"
+                @changed="onCredentialChange"
+            />
 
             <div class="grid gap-6 lg:grid-cols-[1.5fr_1fr]">
                 <AppCard title="By task" :padded="false">
@@ -198,6 +220,18 @@ const when = (iso: string | null): string =>
                             <div class="flex justify-between gap-3">
                                 <dt class="text-ink-subtle">Model</dt>
                                 <dd class="font-mono text-ink">{{ config.model }}</dd>
+                            </div>
+                            <div class="flex justify-between gap-3">
+                                <dt class="text-ink-subtle">Key</dt>
+                                <dd class="font-mono text-ink">
+                                    {{
+                                        config.key_source === 'tenant'
+                                            ? 'this workspace'
+                                            : config.key_source === 'platform'
+                                              ? 'platform'
+                                              : 'none'
+                                    }}
+                                </dd>
                             </div>
                             <div class="flex justify-between gap-3">
                                 <dt class="text-ink-subtle">Effort</dt>
