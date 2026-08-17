@@ -5,8 +5,8 @@
 ```
 
 ```
-Tests:    161 passed (498 assertions)
-Duration: 4.07s
+Tests:    190 passed (626 assertions)
+Duration: 4.80s
 ```
 
 ---
@@ -125,6 +125,10 @@ The DST tests compare against an ordinary week rather than asserting a hard-code
 
 **[Tenant isolation](../tests/Feature/TenantIsolationTest.php)** — 8 tests against two fully-seeded workspaces. A leak test against an empty second tenant tests nothing.
 
+**[AI credentials](../tests/Feature/Api/AiSettingsApiTest.php)** — 20 tests. Owner-only access, verify-before-store, and three that exist purely to keep a secret secret: the plaintext key appears in none of the four endpoint responses, the database column holds ciphertext rather than the key, and one workspace's key is invisible and unusable from another.
+
+The verifier is behind an interface for the same reason `AiClient` is — checking a key means calling Anthropic, and this suite makes no network calls and holds no secret.
+
 ---
 
 ## Static analysis
@@ -151,6 +155,8 @@ Worth listing, because "we have tests" is a claim and this is evidence.
 | The tenant isolation test | `exists:services,id` validated across all tenants — "valid, then 404" is distinguishable from "invalid", which is enough to enumerate |
 | A skipped test | An over-wide availability range threw from a constructor and became a 500 instead of a 422 |
 | An empty-metrics test | `Collection` offset access without `??` semantics threw on a workspace with no completed bookings |
+| Adding customer sign-out | The public header branched admin-or-guest, so a signed-in customer matched neither arm and had no way to log out. The route had worked the whole time; nothing exercised it as a customer |
+| Verifying credentials by hand | `.env.example` pinned `SANCTUM_STATEFUL_DOMAINS` to port 8000, so the admin panel 401s on any other port. Laravel's default already derives it from `APP_URL`; the override was worse than no override |
 
 The second one is the reason this project has no custom test reporter. It was swallowing fatal errors and reporting an exit code with no output; removing it made a class-load failure visible immediately.
 

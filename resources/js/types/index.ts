@@ -9,14 +9,7 @@
 
 export type RiskBand = 'low' | 'medium' | 'high';
 export type BookingStatus = 'pending' | 'confirmed' | 'completed' | 'cancelled' | 'no_show';
-/**
- * A provider id — "anthropic", "openai", "deepseek", or whatever a workspace
- * called its custom endpoint — or "heuristic" for the built-in fallback.
- *
- * Deliberately open: the provider catalogue is configuration, so a closed
- * union here would need editing every time somebody adds one.
- */
-export type AiDriver = 'heuristic' | (string & {});
+export type AiDriver = 'claude' | 'heuristic';
 
 export interface AiProvenance {
     driver: AiDriver;
@@ -111,6 +104,33 @@ export interface Briefing {
     focus: string;
     stats: DayStats;
     ai: AiProvenance;
+}
+
+export interface AiSettings {
+    has_key: boolean;
+    masked_key: string | null;
+    key_set_at: string | null;
+    key_set_by?: string | null;
+    last_checked_at: string | null;
+    last_check_passed: boolean;
+    last_check_error: string | null;
+    model: string | null;
+    monthly_budget_usd: number | null;
+}
+
+export interface AiEffectiveConfig {
+    driver: AiDriver;
+    key_source: 'tenant' | 'platform' | 'none';
+    model: string;
+    monthly_budget_usd: number;
+    configured_driver: string;
+}
+
+export interface AiModelOption {
+    id: string;
+    input_per_mtok_usd: number;
+    output_per_mtok_usd: number;
+    is_platform_default: boolean;
 }
 
 export interface SharedProps {

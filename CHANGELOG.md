@@ -5,6 +5,27 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- **Bring-your-own Anthropic key, per workspace.** An owner installs a key at Admin → AI usage. It is verified against the Anthropic API before it is stored, encrypted at rest with `APP_KEY`, never returned by any endpoint, and never logged. Removing it falls back to the platform key, then to the built-in implementations — nothing breaks at any step
+- Per-workspace model choice, restricted to models the app has prices for, and a per-workspace monthly spend ceiling
+- A re-check action, because a key that verified when it was saved can be revoked later
+- Five endpoints under `/admin/ai-settings`, owner-only and throttled
+
+### Fixed
+
+- **Customers could not sign out.** The public header branched admin-or-guest, and a signed-in customer is neither, so no control was rendered. Replaced with an account menu that covers every role by construction
+- `.env.example` pinned `SANCTUM_STATEFUL_DOMAINS` to port 8000, which 401s the admin panel on any other port. Laravel already derives it from `APP_URL`
+
+### Changed
+
+- The Anthropic SDK client is now built per key rather than shared. A single cached client would send one workspace's request on another's credential
+- The monthly spend guard and its cache key are per workspace, since the ceiling now is
+
+---
+
 ## [1.0.0] — 2026-08-19
 
 First public version.

@@ -75,6 +75,8 @@ Branch on `error.code` — it is the stable part of the contract, and changing o
 | `staff_service_mismatch` | 422 | That person does not offer that service |
 | `invalid_booking_transition` | 422 | Illegal status change. `context.allowed` lists what is |
 | `service_has_bookings` | 409 | Cannot delete; deactivate instead |
+| `ai_key_rejected` | 422 | Anthropic refused the key. `message` says why; nothing was stored |
+| `no_key_installed` | 422 | Asked to re-check a key this workspace does not have |
 | `staff_has_bookings` | 409 | Cannot delete; reassign first |
 
 404s never name the model class.
@@ -93,7 +95,7 @@ Get one from `POST /auth/login` or `POST /auth/register`. `POST /auth/logout` re
 
 ## Endpoints
 
-32 in total, all under `/api/v1`.
+37 in total, all under `/api/v1`.
 
 ### Auth
 
@@ -253,7 +255,64 @@ no_show    → (terminal)
 
 An illegal move returns `422 invalid_booking_transition` with `context.allowed`. Marking a no-show updates the customer's counters, which feeds the risk model.
 
-### AI
+### AI credentials
+
+| | | Auth |
+|---|---|---|
+| `GET` | `/admin/ai-settings` | **owner** |
+| `PUT` | `/admin/ai-settings` | **owner** |
+| `PUT` | `/admin/ai-settings/key` | **owner** |
+| `DELETE` | `/admin/ai-settings/key` | **owner** |
+| `POST` | `/admin/ai-settings/verify` | **owner** |
+
+Owner only, and throttled to 12/min — the store and verify endpoints each call Anthropic, so without a limit they are a free way to probe a key for validity.
+
+A workspace can bring its own Anthropic key. It takes precedence over the platform key in `.env`; remove it and the workspace falls back to the platform key, then to the built-in implementations. Nothing breaks at any step.
+
+```json
+GET /api/v1/admin/ai-settings
+{
+  "data": {
+    "settings": {
+      "has_key": true,
+      "masked_key": "sk-ant-…Ab12",
+      "key_set_at": "2026-08-20T09:14:00+00:00",
+      "last_checked_at": "2026-08-20T09:14:00+00:00",
+      "last_check_passed": true,
+      "last_check_error": null,
+      "model": "claude-opus-5",
+      "monthly_budget_usd": 40
+    },
+    "effective": {
+      "driver": "claude",
+      "key_source": "tenant",
+      "model": "claude-opus-5",
+      "monthly_budget_usd": 40,
+      "configured_driver": "auto"
+    },
+    "available_models": [ … ]
+  }
+}
+```
+
+`settings` is what this workspace stored. `effective` is what is actually in force after falling back to the platform — they diverge, and the difference is the whole point of the object.
+
+**`PUT /admin/ai-settings/key` verifies before it stores.** The key is checked against Anthropic first; if the check fails, the response is `422 ai_key_rejected` with a message saying why, and **nothing is written**. A workspace that looks configured while every call quietly falls back is worse than one that is plainly unconfigured.
+
+```json
+PUT /api/v1/admin/ai-settings/key
+{ "api_key": "sk-ant-api03-…", "model": "claude-opus-5" }
+```
+
+Three things to know:
+
+- **No endpoint returns the key.** Not this one, not `show`, not after an update. Only the last four characters.
+- **`model` is restricted** to models this application has prices for. Anything else would report a spend of zero.
+- **`monthly_budget_usd` and `model` accept null**, meaning "use the platform default".
+
+`POST /admin/ai-settings/verify` re-checks the stored key and records the outcome. A key that verified when it was saved can be revoked later; `last_check_passed` says when it was last known good, not that it works now.
+
+### AI features
 
 | | | Auth |
 |---|---|---|

@@ -1,6 +1,6 @@
 # Database
 
-MySQL 8, thirteen migrations, eleven business tables. Every index in here exists for a query that is written down.
+MySQL 8, fourteen migrations, twelve business tables. Every index in here exists for a query that is written down.
 
 ---
 
@@ -13,6 +13,7 @@ erDiagram
     TENANTS ||--o{ STAFF : "employs"
     TENANTS ||--o{ CUSTOMERS : "serves"
     TENANTS ||--o{ BOOKINGS : "owns"
+    TENANTS ||--o| TENANT_AI_SETTINGS : "configures"
 
     USERS ||--o| STAFF : "may be"
     USERS ||--o| CUSTOMERS : "may be"
@@ -99,6 +100,15 @@ erDiagram
         rationale text "model-written"
         generated_by string "claude|heuristic"
     }
+    TENANT_AI_SETTINGS {
+        id bigint PK
+        tenant_id bigint FK,UK
+        api_key text "encrypted with APP_KEY"
+        key_last_four string "display only"
+        verified_at datetime
+        model string "null = platform default"
+        monthly_budget_usd decimal "null = platform default"
+    }
     AI_INTERACTIONS {
         id bigint PK
         tenant_id bigint FK
@@ -146,6 +156,14 @@ Snapshotted, so changing a service's turnaround does not retroactively shift app
 `completed_count`, `no_show_count` and `cancelled_count` duplicate what a `COUNT` over `bookings` would tell you. That is deliberate: the risk scorer reads them on every booking write, and a `COUNT` per booking is the classic N+1 that shows up six months in.
 
 They are maintained inside the same transaction that changes a booking's status, so they cannot drift from the rows they summarise.
+
+### The API key is encrypted, and the last four are not
+
+`tenant_ai_settings.api_key` uses Eloquent's `encrypted` cast, so the column holds ciphertext and `APP_KEY` is what reads it. ⚠️ Rotating `APP_KEY` without re-encrypting makes stored keys unreadable — workspaces fall back to the platform key or the built-in implementations until someone re-enters theirs.
+
+`key_last_four` is stored in the clear beside it, purely so the settings page can show *which* key is installed without decrypting anything. Four characters identify a key to the person who created it and are useless to anyone else.
+
+The column is deliberately `text`, not `varchar(255)`: ciphertext is much larger than the plaintext key, and a too-small column truncates silently.
 
 ### `reference` is not the primary key
 
@@ -245,6 +263,7 @@ Thirteen, in dependency order:
 2026_01_01_000700  bookings
 2026_01_01_000800  booking_risk_assessments
 2026_01_01_000900  ai_interactions
+2026_01_01_001000  tenant_ai_settings
 2026_01_01_001200  personal_access_tokens
 ```
 

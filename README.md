@@ -39,7 +39,12 @@ php artisan serve             # http://localhost:8000
 npm run dev                   # in a second terminal
 ```
 
-**No API key needed.** Every AI feature has a deterministic fallback, so the demo, the test suite and CI all run without one. Add `ANTHROPIC_API_KEY` to `.env` and the same features get noticeably better — the admin panel labels which mode produced what you are reading.
+**No API key needed.** Every AI feature has a deterministic fallback, so the demo, the test suite and CI all run without one. The same features get noticeably better with a key, and there are two ways to add one:
+
+- `ANTHROPIC_API_KEY` in `.env` — the platform key, used by every workspace
+- **Admin → AI usage → Anthropic API key** — a workspace's own key, verified against Anthropic before it is stored, encrypted at rest, and never returned by any endpoint
+
+The admin panel labels which mode produced what you are reading, and says which key paid for it.
 
 | | |
 |---|---|
@@ -133,6 +138,8 @@ The risk feature is the clearest case. No-shows cost real money, and the respons
 
 Every AI response carries an `ai` object saying which driver answered and, if it degraded, why. The admin panel renders model-written and template-written text differently. Presenting the two identically is how these features lose people's trust the first time one is wrong.
 
+Credentials are per workspace and treated like a payment method: verified before they are stored, encrypted at rest, never returned by any endpoint, never logged, and owner-only — staff use every AI feature and see nothing about the key that pays for it.
+
 → [`docs/AI.md`](docs/AI.md)
 
 ### 4. The fallback is a real implementation, not an apology
@@ -171,10 +178,11 @@ This is why the test suite needs no secret, why CI makes no network calls, and w
 - Services with an AI copy drafter; team management; a weekly hours editor that understands lunch breaks and overnight shifts
 - Time off that reports conflicting bookings instead of silently cancelling them
 - An AI usage page: calls, tokens, latency, cache hits, failures and spend against a monthly budget
+- Bring-your-own Anthropic key, per workspace — verified before it is saved, encrypted at rest, removable without breaking anything
 
 **Platform**
 
-- 32 REST endpoints under `/api/v1`, one error envelope, generated OpenAPI 3.1
+- 37 REST endpoints under `/api/v1`, one error envelope, generated OpenAPI 3.1
 - Multi-tenant from the first migration — global scope on read, auto-fill on write, explicit escape hatch
 - Sanctum tokens for API clients; the admin panel is a client of the same API over its session cookie
 - Roles enforced per record by policies, not just per route
@@ -190,7 +198,7 @@ This is why the test suite needs no secret, why CI makes no network calls, and w
 | **Quality** | Pest 4, PHPStan (larastan) level 5, Laravel Pint, GitHub Actions |
 | **Docs** | Scramble (OpenAPI 3.1 from the code), Postman collection |
 
-Roughly 8,500 lines of PHP across 102 files, 3,800 lines of TypeScript and Vue across 24 components, and 2,600 lines of tests.
+Roughly 9,500 lines of PHP across 115 files, 3,800 lines of TypeScript and Vue across 24 components, and 2,600 lines of tests.
 
 ## Tests
 
@@ -199,8 +207,8 @@ Roughly 8,500 lines of PHP across 102 files, 3,800 lines of TypeScript and Vue a
 ```
 
 ```
-Tests:    161 passed (498 assertions)
-Duration: 4.07s
+Tests:    190 passed (626 assertions)
+Duration: 4.80s
 ```
 
 | Suite | What it covers |
