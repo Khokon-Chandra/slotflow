@@ -211,3 +211,101 @@ That is not decoration. A user reading a sentence about their own business is en
 Four tests cover the degradation paths, including one that binds a client which throws and asserts the customer still gets slots.
 
 ---
+
+## Credentials
+
+A key can come from two places, and the resolution order is the product decision:
+
+| Source | Set where | Who pays |
+|---|---|---|
+| **Workspace** | Admin panel → AI usage → Anthropic API key | The business |
+| **Platform** | `ANTHROPIC_API_KEY` in `.env` | Whoever runs the deployment |
+| Neither | — | Nobody. The heuristic driver answers |
+
+A single-tenant deployment configures `.env` once and never opens the settings page. A platform reselling access lets each business bring its own key and its own ceiling. Neither needs to know the other exists — [`AiCredentials`](../app/Ai/Credentials/AiCredentials.php) answers "which key, which model, which budget" and everything else asks it.
+
+### The key is verified before it is stored
+
+Saving a key calls `models.retrieve()` with it first. That validates the credential *and* that the account can reach the chosen model, costs no tokens, and returns in well under a second — so the form can be synchronous without feeling broken.
+
+If the check fails, **nothing is written**. Storing an unverified key would be worse than storing none: the workspace would look configured, every call would quietly fall back, and the only evidence would be a `degraded_reason` nobody was reading.
+
+The API's error is translated into something actionable rather than passed through:
+
+| Status | What the owner is told |
+|---|---|
+| 401 | That key was rejected. Check you copied all of it, and that it has not been revoked |
+| 403 | Valid, but not permitted to use this model. Pick another, or check the key's workspace |
+| 404 | That model does not exist, or this key cannot see it |
+| 429 | Rate limited right now. It is probably fine — try again in a moment |
+
+There is also a **re-check** action, because a key that verified on Tuesday can be revoked on Wednesday. `last_check_passed` is deliberately worded as *when it was last known good*, not as a claim that it works now.
+
+### How it is kept
+
+- **Encrypted at rest** with Laravel's `encrypted` cast, which uses `APP_KEY`. ⚠️ Rotating `APP_KEY` without re-encrypting makes stored keys unreadable; workspaces would fall back to the platform key or the heuristic driver until they re-enter theirs.
+- **Never returned.** No endpoint has a branch that can emit it — only `sk-ant-…Ab12`, enough to recognise which key is installed and useless to anyone who obtains it. A test asserts the plaintext appears in none of the four responses.
+- **Never logged.** The verifier catches SDK exceptions and logs the exception class and the model, never the credential.
+- **Not mass-assignable.** `api_key` is absent from `Fillable`; the only path to the column is [`StoreApiKey`](../app/Ai/Credentials/StoreApiKey.php), which verifies first.
+- **Owner only.** Staff use every AI feature and read the usage page, and see nothing about the key that pays for it — the same line a payment method sits on.
+
+### One client per key, never one client shared
+
+The Anthropic SDK client is built by [`ClaudeClientFactory`](../app/Ai/Credentials/ClaudeClientFactory.php) and cached **keyed by the key itself**.
+
+Constructing it runs PSR-18 discovery, so rebuilding per call is wasteful — but a single cached client handed to every workspace would send one tenant's request on another tenant's credential, and nothing would say so. Keying the cache by the key makes that impossible rather than merely unlikely, and the map is keyed by a hash so a memory dump does not spill credentials.
+
+The same reasoning applies to the driver: `ClaudeClient` resolves credentials **per call**, not at construction. A queue worker handles jobs for several workspaces in one process.
+
+### Model choice
+
+A workspace may pick any model this application has prices for, and no others. Allowing an unpriced model means every call reports a spend of zero — and a budget you cannot measure is not a budget.
+
+---
+
+## Cost
+
+Spend is bounded three ways.
+
+**A monthly ceiling.** `AI_MONTHLY_BUDGET_USD` (default 25). Crossing it stops the API calls and serves the fallback until the month rolls over. Nothing breaks; answers get simpler. That is the right failure mode for a spend limit, and the difference between a bad morning and a bad quarter.
+
+**Per-tenant, per-task rate limits.** Configured in `config/ai.php`. The unauthenticated booking assistant is the tightest, because it is the only public route that costs money.
+
+**Caching.** 15 minutes by default, keyed per task. Two customers asking the same thing on the same day share one call; two bookings with the same score and the same factors share one rationale.
+
+Cost is recorded per call in **micro-dollars as an integer**, so a month of rows sums without floating-point drift. Rates live in `config/ai.php` and are used both for the budget guard and the admin usage panel.
+
+---
+
+## Observability
+
+Every call writes an [`AiInteraction`](../app/Models/AiInteraction.php): task, driver, model, tokens in and out, cached tokens, cost, latency, success, whether it came from cache, and the failure reason.
+
+The admin **AI usage** page reads it: calls and spend by task, cache hit rate, failure count, budget consumed, and the last 25 calls individually.
+
+Without that table an "AI feature" is a black box you cannot budget for, debug, or explain to a client. This page exists before the spend does.
+
+The write is wrapped in a `try`/`catch` — observability must never be the thing that takes a request down.
+
+---
+
+## Prompt hygiene
+
+- **Never interpolate user text into a system prompt.** The customer's sentence is the user message; the business's data is in the system prompt. Mixing them is prompt injection with extra steps.
+- **Input is capped.** 400 characters on the booking assistant. It is a booking request, not a conversation, and a cap is the cheapest defence against someone using an unauthenticated endpoint as free inference.
+- **Output is constrained by schema**, not by instruction.
+- **Model ids are complete as written.** `claude-opus-5`, never with a date suffix appended.
+- **No customer PII beyond the first name** reaches the model in the risk narrator, and none at all in the copy writer.
+
+---
+
+## What is deliberately not here
+
+- **No conversational memory.** Each call is independent. A booking assistant that remembers is a support burden, not a feature.
+- **No tool use or agent loop.** The model narrows a search; the application does the rest. See rule 1.
+- **No streaming.** These outputs are short and land in a form field or a card. Streaming would add complexity for no user-visible gain.
+- **No fine-tuning or embeddings.** Six services do not need a vector store; a keyword field the owner controls beats one, and they can edit it.
+
+---
+
+Next: [DECISIONS.md](DECISIONS.md) — the decision records, including the ones that were rejected.
