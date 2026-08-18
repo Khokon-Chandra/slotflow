@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Http\Controllers\Api\V1\Admin\AdminBookingController;
+use App\Http\Controllers\Api\V1\Admin\AiProviderController;
 use App\Http\Controllers\Api\V1\Admin\MetricsController;
 use App\Http\Controllers\Api\V1\Ai\BookingAssistantController;
 use App\Http\Controllers\Api\V1\Ai\BriefingController;
@@ -101,6 +102,21 @@ Route::prefix('v1')
             Route::get('admin/metrics', [MetricsController::class, 'index']);
             Route::get('admin/ai-usage', [MetricsController::class, 'aiUsage']);
 
+            /*
+            | AI providers — owner only, enforced by AiSettingsPolicy.
+            |
+            | Throttled harder than the rest: connecting and re-checking each
+            | call out to the provider, so without a limit these are a free way
+            | to probe somebody else's key for validity.
+            */
+            Route::middleware('throttle:12,1')->group(function (): void {
+                Route::get('admin/ai-providers', [AiProviderController::class, 'index']);
+                Route::put('admin/ai-providers/{provider}', [AiProviderController::class, 'store']);
+                Route::post('admin/ai-providers/{provider}/activate', [AiProviderController::class, 'activate']);
+                Route::post('admin/ai-providers/{provider}/verify', [AiProviderController::class, 'verify']);
+                Route::delete('admin/ai-providers/{provider}', [AiProviderController::class, 'destroy']);
+                Route::put('admin/ai-settings', [AiProviderController::class, 'updateSettings']);
+            });
 
             Route::get('bookings/{booking}/risk', RiskController::class);
             Route::get('ai/daily-briefing', BriefingController::class);
