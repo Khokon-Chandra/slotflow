@@ -4,69 +4,67 @@ declare(strict_types=1);
 
 namespace App\Ai\Credentials;
 
+use App\Ai\Providers\Provider;
+use App\Ai\Providers\ProviderRegistry;
+use App\Models\AiProviderCredential;
 use App\Models\TenantAiSettings;
 use App\Support\TenantContext;
 
 /**
- * Answers "which key, which model, which budget" for the current workspace.
+ * Answers "which provider, which key, which model, which budget" for the
+ * current workspace.
  *
  * Resolution is workspace first, platform second:
  *
- *   1. the tenant's own key, set through the admin panel
- *   2. ANTHROPIC_API_KEY from .env
+ *   1. the workspace's active credential, connected in the admin panel
+ *   2. the platform credential from .env
  *   3. nothing — the heuristic driver answers
  *
- * That order is the product decision. A business that brings its own key pays
- * its own bill and can be given its own budget; a single-tenant deployment
- * configures .env once and never sees the settings page. Neither needs to know
- * the other exists.
+ * That order is the product decision. A business that connects its own
+ * provider pays its own bill and gets its own ceiling; a single-tenant
+ * deployment configures .env once and never opens the page. Neither needs to
+ * know the other exists.
  *
- * Resolved per call rather than cached in a singleton. A queue worker handles
- * jobs for several workspaces in one process, and a cached key is a key used
- * for somebody else's tenant.
+ * Resolved per call, never memoised. A queue worker serves several workspaces
+ * in one process, and a cached credential is a credential used for the wrong
+ * tenant.
  */
 final class AiCredentials
 {
-    public function __construct(private readonly TenantContext $tenants) {}
+    public function __construct(
+        private readonly TenantContext $tenants,
+        private readonly ProviderRegistry $providers,
+    ) {}
 
-    public function apiKey(): ?string
+    public function resolve(): ?ResolvedCredential
     {
-        $tenantKey = $this->settings()?->api_key;
-
-        if (filled($tenantKey)) {
-            return $tenantKey;
-        }
-
-        $platformKey = config('ai.claude.api_key');
-
-        return filled($platformKey) ? (string) $platformKey : null;
+        return $this->fromWorkspace() ?? $this->fromPlatform();
     }
 
-    public function hasKey(): bool
+    public function hasCredential(): bool
     {
-        return $this->apiKey() !== null;
+        return $this->resolve() !== null;
     }
 
     /**
-     * Where the key in use came from. Surfaced in the admin panel so an owner
-     * can tell "the platform is paying" from "I am paying".
+     * Where the credential in use came from. Surfaced in the admin panel so an
+     * owner can tell "the platform is paying" from "I am paying".
      *
-     * @return 'tenant'|'platform'|'none'
+     * @return 'workspace'|'platform'|'none'
      */
     public function source(): string
     {
-        if (filled($this->settings()?->api_key)) {
-            return 'tenant';
-        }
-
-        return filled(config('ai.claude.api_key')) ? 'platform' : 'none';
+        return $this->resolve()->source ?? 'none';
     }
 
-    public function model(): string
+    public function provider(): ?Provider
     {
-        $model = $this->settings()?->model;
+        return $this->resolve()?->provider;
+    }
 
-        return filled($model) ? $model : (string) config('ai.claude.model');
+    public function model(): ?string
+    {
+        return $this->resolve()?->model;
     }
 
     public function monthlyBudgetUsd(): float
@@ -79,42 +77,38 @@ final class AiCredentials
     }
 
     /**
-     * The models a workspace may choose from: exactly those this application
-     * has prices for.
+     * Every credential this workspace has connected, active first.
      *
-     * Allowing anything else means every call reports a spend of zero, which
-     * is a worse outcome than refusing the model — a budget you cannot measure
-     * is not a budget.
-     *
-     * @return list<array{id: string, input_per_mtok_usd: float, output_per_mtok_usd: float, is_platform_default: bool}>
+     * @return \Illuminate\Database\Eloquent\Collection<int, AiProviderCredential>
      */
-    public function availableModels(): array
+    public function all()
     {
-        /** @var array<string, array{input: float, output: float}> $pricing */
-        $pricing = config('ai.pricing', []);
-        $default = (string) config('ai.claude.model');
+        $tenantId = $this->tenants->id();
 
-        $models = [];
-
-        foreach ($pricing as $id => $rates) {
-            $models[] = [
-                'id' => (string) $id,
-                'input_per_mtok_usd' => $rates['input'],
-                'output_per_mtok_usd' => $rates['output'],
-                'is_platform_default' => $id === $default,
-            ];
-        }
-
-        return $models;
+        return AiProviderCredential::query()
+            ->withoutTenantScope()
+            ->where('tenant_id', $tenantId)
+            ->with('setBy')
+            ->orderByDesc('is_active')
+            ->orderBy('provider')
+            ->get();
     }
 
-    /**
-     * The current workspace's row, or null.
-     *
-     * Not memoised: the settings page saves a key and immediately re-reads the
-     * resolved state to show what is now in force, and a stale read there is a
-     * page that lies about whether it worked.
-     */
+    public function activeCredential(): ?AiProviderCredential
+    {
+        $tenantId = $this->tenants->id();
+
+        if ($tenantId === null) {
+            return null;
+        }
+
+        return AiProviderCredential::query()
+            ->withoutTenantScope()
+            ->where('tenant_id', $tenantId)
+            ->active()
+            ->first();
+    }
+
     public function settings(): ?TenantAiSettings
     {
         $tenantId = $this->tenants->id();
@@ -127,5 +121,57 @@ final class AiCredentials
             ->withoutTenantScope()
             ->where('tenant_id', $tenantId)
             ->first();
+    }
+
+    private function fromWorkspace(): ?ResolvedCredential
+    {
+        $credential = $this->activeCredential();
+
+        if ($credential === null || ! $credential->hasKey()) {
+            return null;
+        }
+
+        if (! $this->providers->has($credential->provider)) {
+            // The provider was removed from the catalogue after the workspace
+            // connected it. Falling back beats calling an endpoint nothing in
+            // this application knows the shape of.
+            return null;
+        }
+
+        return new ResolvedCredential(
+            provider: $credential->provider(),
+            apiKey: (string) $credential->api_key,
+            model: $credential->model,
+            baseUrl: $credential->endpoint(),
+            source: 'workspace',
+            rates: $credential->rates(),
+            label: $credential->displayName(),
+        );
+    }
+
+    private function fromPlatform(): ?ResolvedCredential
+    {
+        $key = config('ai.platform.api_key');
+
+        if (blank($key)) {
+            return null;
+        }
+
+        $provider = $this->providers->find((string) config('ai.platform.provider', 'anthropic'));
+
+        if ($provider === null) {
+            return null;
+        }
+
+        $model = (string) config('ai.platform.model', $provider->defaultModel());
+
+        return new ResolvedCredential(
+            provider: $provider,
+            apiKey: (string) $key,
+            model: $model,
+            baseUrl: config('ai.platform.base_url') ?: $provider->baseUrl,
+            source: 'platform',
+            rates: $provider->rates($model),
+        );
     }
 }

@@ -15,11 +15,24 @@ final readonly class KeyVerification
         public ?string $displayName = null,
         public ?int $contextWindow = null,
         public ?string $error = null,
+        // A warning that does not block saving — "the key works, but the
+        // provider did not list that model".
+        public ?string $note = null,
     ) {}
 
-    public static function pass(string $model, string $displayName, ?int $contextWindow): self
-    {
-        return new self(ok: true, model: $model, displayName: $displayName, contextWindow: $contextWindow);
+    public static function pass(
+        string $model,
+        string $displayName,
+        ?int $contextWindow = null,
+        ?string $note = null,
+    ): self {
+        return new self(
+            ok: true,
+            model: $model,
+            displayName: $displayName,
+            contextWindow: $contextWindow,
+            note: $note,
+        );
     }
 
     public static function fail(string $error): self
@@ -38,6 +51,7 @@ final readonly class KeyVerification
             'display_name' => $this->displayName,
             'context_window' => $this->contextWindow,
             'error' => $this->error,
+            'note' => $this->note,
         ];
     }
 }

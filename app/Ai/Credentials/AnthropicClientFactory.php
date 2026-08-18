@@ -18,7 +18,7 @@ use Anthropic\Client;
  * Keys are hashed for the map so a memory dump or a var_dump of this object
  * does not spill credentials.
  */
-final class ClaudeClientFactory
+final class AnthropicClientFactory
 {
     /** @var array<string, Client> */
     private array $clients = [];
