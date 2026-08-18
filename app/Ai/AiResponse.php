@@ -46,9 +46,16 @@ final readonly class AiResponse
         return data_get($this->data, $key, $default);
     }
 
+    /**
+     * Whether a real provider answered, rather than the built-in fallback.
+     *
+     * `driver` holds a provider id — "anthropic", "openai", "deepseek", a
+     * custom one — so the test is "not the fallback" rather than a list of
+     * names that would need editing every time a provider is added.
+     */
     public function isModelWritten(): bool
     {
-        return $this->driver === 'claude';
+        return $this->driver !== 'heuristic';
     }
 
     /**

@@ -67,6 +67,8 @@ class AiInteraction extends Model
     #[Scope]
     protected function billable(Builder $query): Builder
     {
-        return $query->where('driver', 'claude')->where('served_from_cache', false);
+        // Anything that was not the built-in fallback and was not served from
+        // cache actually cost money — whichever provider answered.
+        return $query->where('driver', '!=', 'heuristic')->where('served_from_cache', false);
     }
 }

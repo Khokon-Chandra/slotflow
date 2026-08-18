@@ -52,6 +52,6 @@ class BookingRiskAssessment extends Model
      */
     public function isModelWritten(): bool
     {
-        return $this->generated_by === 'claude';
+        return $this->generated_by !== 'heuristic';
     }
 }

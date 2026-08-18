@@ -12,7 +12,10 @@ interface AiClient
     public function run(AiRequest $request): AiResponse;
 
     /**
-     * Identifier recorded on every ai_interactions row: "claude", "heuristic".
+     * Identifier recorded on every ai_interactions row.
+     *
+     * A provider id — "anthropic", "openai", "deepseek", a custom one — or
+     * "heuristic" for the built-in fallback.
      */
     public function name(): string;
 }

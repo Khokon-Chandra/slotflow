@@ -9,14 +9,20 @@ use Anthropic\RequestOptions;
 use App\Ai\AiRequest;
 use App\Ai\AiResponse;
 use App\Ai\AiUsage;
-use App\Ai\Contracts\AiClient;
+use App\Ai\Contracts\ProviderDriver;
 use App\Ai\Credentials\AiCredentials;
-use App\Ai\Credentials\ClaudeClientFactory;
+use App\Ai\Credentials\AnthropicClientFactory;
+use App\Ai\Credentials\ResolvedCredential;
 use JsonException;
 use RuntimeException;
 
 /**
  * Calls the Anthropic Messages API.
+ *
+ * One of two drivers. The other, OpenAiCompatibleDriver, covers every provider
+ * that speaks the OpenAI Chat Completions shape. Anthropic keeps its own
+ * because its request and response shapes differ, and because the official SDK
+ * is worth having for the provider this application defaults to.
  *
  * Four choices worth pointing at:
  *
@@ -42,27 +48,33 @@ use RuntimeException;
  *     and serves the heuristic result, which is a worse answer arriving on
  *     time rather than a better one arriving never.
  */
-final class ClaudeClient implements AiClient
+final class AnthropicDriver implements ProviderDriver
 {
     public function __construct(
-        private readonly ClaudeClientFactory $clients,
+        private readonly AnthropicClientFactory $clients,
         private readonly AiCredentials $credentials,
     ) {}
 
     public function name(): string
     {
-        return 'claude';
+        return 'anthropic';
     }
 
     public function run(AiRequest $request): AiResponse
     {
-        $apiKey = $this->credentials->apiKey();
+        $credential = $this->credentials->resolve();
 
-        if ($apiKey === null) {
-            throw new RuntimeException('No Anthropic API key is configured for this workspace.');
+        if ($credential === null) {
+            throw new RuntimeException('No AI credential is configured for this workspace.');
         }
 
-        $model = $this->credentials->model();
+        return $this->call($request, $credential);
+    }
+
+    public function call(AiRequest $request, ResolvedCredential $credential): AiResponse
+    {
+        $apiKey = $credential->apiKey;
+        $model = $credential->model;
         $startedAt = hrtime(true);
 
         $message = $this->clients->for($apiKey)->messages->create(
@@ -74,7 +86,7 @@ final class ClaudeClient implements AiClient
             outputConfig: $this->outputConfig($request),
             system: $request->system,
             requestOptions: RequestOptions::with(
-                timeout: (float) config('ai.claude.timeout', 25),
+                timeout: (float) config('ai.request.timeout', 25),
                 maxRetries: 1,
             ),
         );
@@ -88,7 +100,7 @@ final class ClaudeClient implements AiClient
             driver: $this->name(),
             model: $message->model,
             usage: AiUsage::priced(
-                model: $model,
+                rates: $credential->rates,
                 inputTokens: $message->usage->inputTokens,
                 outputTokens: $message->usage->outputTokens,
                 cachedInputTokens: $message->usage->cacheReadInputTokens ?? 0,

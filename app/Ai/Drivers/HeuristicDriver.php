@@ -23,7 +23,7 @@ use Illuminate\Contracts\Container\Container;
  * monthly budget is spent or the response fails to parse, AiManager routes
  * here and the user gets a plainer answer instead of a stack trace.
  */
-final class HeuristicClient implements AiClient
+final class HeuristicDriver implements AiClient
 {
     public function __construct(private readonly Container $container) {}
 

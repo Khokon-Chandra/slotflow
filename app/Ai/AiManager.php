@@ -5,9 +5,12 @@ declare(strict_types=1);
 namespace App\Ai;
 
 use App\Ai\Contracts\AiClient;
+use App\Ai\Contracts\ProviderDriver;
 use App\Ai\Credentials\AiCredentials;
-use App\Ai\Drivers\ClaudeClient;
-use App\Ai\Drivers\HeuristicClient;
+use App\Ai\Credentials\ResolvedCredential;
+use App\Ai\Drivers\AnthropicDriver;
+use App\Ai\Drivers\HeuristicDriver;
+use App\Ai\Drivers\OpenAiCompatibleDriver;
 use App\Models\AiInteraction;
 use App\Support\TenantContext;
 use Illuminate\Contracts\Container\Container;
@@ -15,6 +18,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
+use RuntimeException;
 use Throwable;
 
 /**
@@ -40,7 +44,7 @@ final class AiManager implements AiClient
 
     public function name(): string
     {
-        return $this->shouldUseClaude() ? 'claude' : 'heuristic';
+        return $this->credentials->provider()->id ?? 'heuristic';
     }
 
     /**
@@ -49,7 +53,7 @@ final class AiManager implements AiClient
      */
     public function isLive(): bool
     {
-        return $this->shouldUseClaude();
+        return $this->shouldUseProvider() && $this->credentials->hasCredential();
     }
 
     public function run(AiRequest $request): AiResponse
@@ -64,7 +68,7 @@ final class AiManager implements AiClient
 
         $response = $this->execute($request);
 
-        if ($response->driver === 'claude') {
+        if ($response->isModelWritten()) {
             $this->store($request, $response);
         }
 
@@ -75,41 +79,65 @@ final class AiManager implements AiClient
 
     private function execute(AiRequest $request): AiResponse
     {
-        if (! $this->shouldUseClaude()) {
+        if (! $this->shouldUseProvider()) {
             return $this->heuristic($request, $this->offlineReason());
+        }
+
+        $credential = $this->credentials->resolve();
+
+        if ($credential === null) {
+            return $this->heuristic($request, 'no_credential');
         }
 
         if (! $this->withinRateLimit($request)) {
             return $this->heuristic($request, 'rate_limited');
         }
 
-        if (! $this->withinBudget()) {
+        if (! $this->withinBudget($credential)) {
             return $this->heuristic($request, 'monthly_budget_reached');
         }
 
         try {
-            return $this->container->make(ClaudeClient::class)->run($request);
+            return $this->driverFor($credential)->call($request, $credential);
         } catch (Throwable $e) {
             // A failed AI call must never fail the request that triggered it.
             // The user gets the plainer answer; the operator gets the stack
             // trace in the log and a `succeeded = false` row in the audit table.
             Log::warning('AI call failed; falling back to the heuristic driver.', [
                 'task' => $request->task->value,
+                'provider' => $credential->provider->id,
                 'exception' => $e::class,
                 'message' => $e->getMessage(),
             ]);
 
-            return $this->heuristic($request, 'api_error')
-                ->withCacheFlag(false);
+            return $this->heuristic($request, 'api_error')->withCacheFlag(false);
         }
+    }
+
+    /**
+     * Pick the driver for a provider.
+     *
+     * Two of them cover the field: Anthropic has its own shape and its own
+     * SDK, and everything else in the catalogue speaks OpenAI Chat
+     * Completions. Adding a provider of either kind is a config entry.
+     */
+    private function driverFor(ResolvedCredential $credential): ProviderDriver
+    {
+        $driver = $credential->provider->driver;
+
+        return match ($driver) {
+            'anthropic' => $this->container->make(AnthropicDriver::class),
+            'openai_compatible' => $this->container->make(OpenAiCompatibleDriver::class),
+            default => throw new RuntimeException("No driver implements [{$driver}]."),
+        };
     }
 
     private function heuristic(AiRequest $request, ?string $reason): AiResponse
     {
         $startedAt = hrtime(true);
 
-        /** @var HeuristicClient $client */
-        $client = $this->container->make(HeuristicClient::class);
+        /** @var HeuristicDriver $client */
+        $client = $this->container->make(HeuristicDriver::class);
         $response = $client->run($request);
 
         return new AiResponse(
@@ -124,16 +152,17 @@ final class AiManager implements AiClient
         );
     }
 
-    private function shouldUseClaude(): bool
+    private function shouldUseProvider(): bool
     {
         $driver = (string) config('ai.driver', 'auto');
 
         return match ($driver) {
-            'claude' => true,
+            // Always try the provider, so a misconfiguration is loud.
+            'provider' => true,
             'heuristic' => false,
-            // The key may be the workspace's own or the platform's — see
-            // App\Ai\Credentials\AiCredentials.
-            default => $this->credentials->hasKey(),
+            // The credential may be the workspace's own or the platform's —
+            // see App\Ai\Credentials\AiCredentials.
+            default => $this->credentials->hasCredential(),
         };
     }
 
@@ -146,11 +175,19 @@ final class AiManager implements AiClient
         return $this->credentials->source();
     }
 
+    /**
+     * The provider actually in force, or null when the fallback is answering.
+     */
+    public function activeProvider(): ?string
+    {
+        return $this->isLive() ? $this->credentials->provider()?->id : null;
+    }
+
     private function offlineReason(): ?string
     {
         return config('ai.driver') === 'heuristic'
             ? null                       // deliberate configuration, not a degradation
-            : 'no_api_key';
+            : 'no_credential';
     }
 
     /**
@@ -174,11 +211,19 @@ final class AiManager implements AiClient
      * breaking it — which is the right failure mode for a spend limit, and
      * the difference between a bad morning and a bad quarter.
      */
-    private function withinBudget(): bool
+    private function withinBudget(ResolvedCredential $credential): bool
     {
         $budgetUsd = $this->credentials->monthlyBudgetUsd();
 
         if ($budgetUsd <= 0) {
+            return true;
+        }
+
+        // Nothing to compare against: this model's rates are unknown, so every
+        // recorded cost is zero and the ceiling would never be reached. Better
+        // to let the calls through than to enforce a limit against a number
+        // that means "unmeasured" — the admin panel says spend is untracked.
+        if (! $credential->tracksSpend()) {
             return true;
         }
 
