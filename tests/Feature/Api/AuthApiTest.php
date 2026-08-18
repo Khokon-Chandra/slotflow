@@ -128,9 +128,46 @@ it('throttles repeated failures', function (): void {
 });
 
 it('revokes only the token that was used', function (): void {
-    $user = $this->studio->owner();
+    // Two real tokens rather than Sanctum::actingAs, which fakes a transient
+    // one and would let this pass without anything actually being revoked.
+    $user = $this->studio->customerUser();
+    $user->update(['password' => 'correct-horse-battery']);
 
-    Sanctum::actingAs($user);
+    $login = fn (string $device): string => $this->postJson('/api/v1/auth/login', [
+        'email' => $user->email,
+        'password' => 'correct-horse-battery',
+        'device_name' => $device,
+    ], $this->headers)->json('data.token');
+
+    $phone = $login('iPhone');
+    RateLimiter::clear('login:'.sha1($user->email.'|127.0.0.1'));
+    $laptop = $login('Laptop');
+
+    expect($user->tokens()->count())->toBe(2);
+
+    $this->withToken($phone)->postJson('/api/v1/auth/logout', [], $this->headers)->assertOk();
+
+    // Only the phone's token is gone.
+    expect($user->tokens()->count())->toBe(1);
+    expect($user->tokens()->sole()->name)->toBe('Laptop');
+
+    // The guard caches whichever user it resolved for the previous request,
+    // and the whole application instance is reused between requests in a test.
+    // A genuine second HTTP request would resolve from scratch, so forget the
+    // guards to model that — otherwise this asserts the cache, not the token.
+    $this->app['auth']->forgetGuards();
+    $this->withToken($phone)->getJson('/api/v1/auth/me', $this->headers)->assertUnauthorized();
+
+    $this->app['auth']->forgetGuards();
+    $this->withToken($laptop)->getJson('/api/v1/auth/me', $this->headers)->assertOk();
+});
+
+it('lets a customer sign out of the API', function (): void {
+    // The web header had no sign-out for customers for a while. The API never
+    // had that gap, and this is what keeps it that way.
+    Sanctum::actingAs($this->studio->customerUser());
+
+    $this->getJson('/api/v1/auth/me')->assertOk();
     $this->postJson('/api/v1/auth/logout')->assertOk();
 });
 

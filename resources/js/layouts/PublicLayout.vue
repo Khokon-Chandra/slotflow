@@ -2,12 +2,12 @@
 import { computed } from 'vue';
 import { Link, usePage } from '@inertiajs/vue3';
 import { CalendarClock } from 'lucide-vue-next';
+import AccountMenu from '@/components/AccountMenu.vue';
 import ThemeToggle from '@/components/ThemeToggle.vue';
 import AppButton from '@/components/ui/AppButton.vue';
 
 const page = usePage();
 const tenant = computed(() => page.props.tenant);
-const user = computed(() => page.props.auth.user);
 </script>
 
 <template>
@@ -31,17 +31,12 @@ const user = computed(() => page.props.auth.user);
                         Services
                     </Link>
                     <ThemeToggle />
-                    <AppButton
-                        v-if="user?.is_admin || user?.role === 'staff'"
-                        href="/admin"
-                        variant="secondary"
-                        size="sm"
-                    >
-                        Admin
-                    </AppButton>
-                    <AppButton v-else-if="!user" href="/login" variant="ghost" size="sm">
-                        Sign in
-                    </AppButton>
+
+                    <!-- Covers every role in one component. The previous
+                         admin/guest branch had no arm for a signed-in
+                         customer, who could therefore never sign out. -->
+                    <AccountMenu />
+
                     <AppButton href="/book" size="sm">Book</AppButton>
                 </nav>
             </div>
