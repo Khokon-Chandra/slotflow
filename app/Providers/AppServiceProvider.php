@@ -33,10 +33,18 @@ final class AppServiceProvider extends ServiceProvider
         // silently mutating the model is a bug class this removes outright.
         Date::use(CarbonImmutable::class);
 
-        // Fail loudly in development rather than quietly in production:
-        // lazy loading becomes an exception, so an N+1 shows up as a failing
-        // test instead of a slow page six months later.
-        Model::shouldBeStrict($this->app->isLocal());
+        /*
+         * Fail loudly everywhere except production: lazy loading, silently
+         * discarded attributes and missing attributes all become exceptions,
+         * so an N+1 is a failing test rather than a slow page six months later.
+         *
+         * Deliberately not `isLocal()` only. A mass assignment that drops a
+         * non-fillable field says nothing without this, and the test suite is
+         * exactly where you want to hear about it — that oversight let a
+         * "promote the next credential" path do nothing at all while its own
+         * test passed for the wrong reason.
+         */
+        Model::shouldBeStrict(! $this->app->isProduction());
 
         // Destructive statements against a live database need a deliberate
         // `--force`, not a mistyped environment variable.

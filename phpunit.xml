@@ -53,6 +53,13 @@
             weakening them — and it means CI needs no secret.
         -->
         <env name="AI_DRIVER" value="heuristic"/>
+
+        <!--
+            No SSR in tests. Inertia ships with it on, so every page render
+            would try to reach an SSR server that does not exist here — a
+            stray network call the suite is not allowed to make.
+        -->
+        <env name="INERTIA_SSR_ENABLED" value="false"/>
         <env name="ANTHROPIC_API_KEY" value=""/>
 
         <env name="PULSE_ENABLED" value="false"/>
