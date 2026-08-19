@@ -16,8 +16,9 @@ const props = defineProps<{ ai: AiProvenance }>();
 
 const reason = computed(() => {
     switch (props.ai.degraded_reason) {
+        case 'no_credential':
         case 'no_api_key':
-            return 'No API key configured, so this was written by the built-in fallback.';
+            return 'No AI provider is connected, so this was written by the built-in fallback.';
         case 'monthly_budget_reached':
             return 'The monthly AI budget is spent. Falling back until next month.';
         case 'rate_limited':
@@ -32,9 +33,9 @@ const reason = computed(() => {
 
 <template>
     <span class="inline-flex items-center gap-1.5 text-[0.6875rem] text-ink-subtle">
-        <template v-if="ai.driver === 'claude'">
+        <template v-if="ai.driver !== 'heuristic'">
             <Sparkles class="size-3 text-brand" aria-hidden="true" />
-            <span>Written by {{ ai.model ?? 'Claude' }}</span>
+            <span>Written by {{ ai.model ?? ai.driver }}</span>
             <span v-if="ai.cached" class="text-ink-subtle">· cached</span>
         </template>
 

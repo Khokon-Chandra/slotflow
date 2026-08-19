@@ -15,7 +15,7 @@ import type { RiskAssessment } from '@/types';
 const props = defineProps<{ risk: RiskAssessment }>();
 
 const provenance = computed(() => ({
-    driver: props.risk.generated_by === 'claude' ? ('claude' as const) : ('heuristic' as const),
+    driver: props.risk.generated_by,
     model: props.risk.model,
     cached: false,
     degraded_reason: null,

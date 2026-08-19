@@ -2,21 +2,16 @@
 import { computed } from 'vue';
 import { Head } from '@inertiajs/vue3';
 import { Sparkles, CircuitBoard, Gauge, Wallet, Timer } from 'lucide-vue-next';
-import { router } from '@inertiajs/vue3';
+import { Link } from '@inertiajs/vue3';
 import AdminLayout from '@/layouts/AdminLayout.vue';
-import AiCredentialCard from '@/components/AiCredentialCard.vue';
 import AppCard from '@/components/ui/AppCard.vue';
 import AppBadge from '@/components/ui/AppBadge.vue';
 import AppEmpty from '@/components/ui/AppEmpty.vue';
 import StatTile from '@/components/StatTile.vue';
-import type { AiSettings, AiEffectiveConfig, AiModelOption } from '@/types';
 
 const props = defineProps<{
     days: number;
     canManageCredentials: boolean;
-    aiSettings: AiSettings | null;
-    aiEffective: AiEffectiveConfig | null;
-    aiModels: AiModelOption[];
     byTask: {
         task: string;
         task_label: string;
@@ -42,7 +37,15 @@ const props = defineProps<{
         created_at: string | null;
     }[];
     budget: { monthly_usd: number; spent_this_month_usd: number };
-    config: { driver: string; model: string; effort: string; cache_ttl: number; key_source: string };
+    config: {
+        driver: string;
+        provider: string | null;
+        model: string | null;
+        effort: string;
+        cache_ttl: number;
+        key_source: string;
+        tracks_spend: boolean;
+    };
 }>();
 
 const totals = computed(() => {
@@ -66,12 +69,6 @@ const budgetUsed = computed(() =>
         : Math.min(100, (props.budget.spent_this_month_usd / props.budget.monthly_usd) * 100),
 );
 
-// The credential drives the budget bar, the configuration list and the
-// "AI live" badge in the layout, so a change means reloading the page props
-// rather than patching three places by hand.
-const onCredentialChange = (): void => {
-    router.reload({ only: ['budget', 'config', 'aiSettings', 'aiEffective'] });
-};
 
 const usd = (value: number): string => (value === 0 ? '$0.00' : `$${value.toFixed(value < 0.01 ? 5 : 2)}`);
 
@@ -134,14 +131,6 @@ const when = (iso: string | null): string =>
                 </StatTile>
             </div>
 
-            <AiCredentialCard
-                v-if="canManageCredentials && aiSettings && aiEffective"
-                :settings="aiSettings"
-                :effective="aiEffective"
-                :models="aiModels"
-                @changed="onCredentialChange"
-            />
-
             <div class="grid gap-6 lg:grid-cols-[1.5fr_1fr]">
                 <AppCard title="By task" :padded="false">
                     <AppEmpty
@@ -168,7 +157,7 @@ const when = (iso: string | null): string =>
                                 <tr v-for="row in byTask" :key="`${row.task}-${row.driver}`">
                                     <td class="px-4 py-3 text-ink">{{ row.task_label }}</td>
                                     <td class="px-4 py-3">
-                                        <AppBadge :tone="row.driver === 'claude' ? 'brand' : 'neutral'" size="sm">
+                                        <AppBadge :tone="row.driver === 'heuristic' ? 'neutral' : 'brand'" size="sm">
                                             {{ row.driver }}
                                         </AppBadge>
                                     </td>
@@ -212,6 +201,12 @@ const when = (iso: string | null): string =>
                     </AppCard>
 
                     <AppCard title="Configuration">
+                        <template v-if="canManageCredentials" #actions>
+                            <Link href="/admin/ai-providers" class="text-xs text-brand hover:underline">
+                                Manage providers
+                            </Link>
+                        </template>
+
                         <dl class="space-y-2 text-xs">
                             <div class="flex justify-between gap-3">
                                 <dt class="text-ink-subtle">Driver</dt>
@@ -222,10 +217,14 @@ const when = (iso: string | null): string =>
                                 <dd class="font-mono text-ink">{{ config.model }}</dd>
                             </div>
                             <div class="flex justify-between gap-3">
+                                <dt class="text-ink-subtle">Provider</dt>
+                                <dd class="font-mono text-ink">{{ config.provider ?? '—' }}</dd>
+                            </div>
+                            <div class="flex justify-between gap-3">
                                 <dt class="text-ink-subtle">Key</dt>
                                 <dd class="font-mono text-ink">
                                     {{
-                                        config.key_source === 'tenant'
+                                        config.key_source === 'workspace'
                                             ? 'this workspace'
                                             : config.key_source === 'platform'
                                               ? 'platform'
@@ -256,7 +255,7 @@ const when = (iso: string | null): string =>
                         <span class="tnum w-24 shrink-0 text-ink-subtle">{{ when(row.created_at) }}</span>
                         <span class="min-w-32 flex-1 text-ink">{{ row.task }}</span>
 
-                        <AppBadge :tone="row.driver === 'claude' ? 'brand' : 'neutral'" size="sm">
+                        <AppBadge :tone="row.driver === 'heuristic' ? 'neutral' : 'brand'" size="sm">
                             {{ row.model ?? row.driver }}
                         </AppBadge>
 

@@ -9,7 +9,14 @@
 
 export type RiskBand = 'low' | 'medium' | 'high';
 export type BookingStatus = 'pending' | 'confirmed' | 'completed' | 'cancelled' | 'no_show';
-export type AiDriver = 'claude' | 'heuristic';
+/**
+ * A provider id — "anthropic", "openai", "deepseek", or whatever a workspace
+ * called its custom endpoint — or "heuristic" for the built-in fallback.
+ *
+ * Deliberately open: the provider catalogue is configuration, so a closed
+ * union here would need editing every time somebody adds one.
+ */
+export type AiDriver = 'heuristic' | (string & {});
 
 export interface AiProvenance {
     driver: AiDriver;
@@ -106,31 +113,57 @@ export interface Briefing {
     ai: AiProvenance;
 }
 
-export interface AiSettings {
-    has_key: boolean;
+export interface AiProviderModel {
+    id: string;
+    label: string;
+    input_per_mtok_usd: number | null;
+    output_per_mtok_usd: number | null;
+    has_rates: boolean;
+}
+
+export interface AiProviderCatalogueEntry {
+    id: string;
+    label: string;
+    driver: string;
+    base_url: string | null;
+    key_hint: string;
+    console_url: string | null;
+    pricing_url: string | null;
+    supports_json_schema: boolean;
+    requires_base_url: boolean;
+    models: AiProviderModel[];
+}
+
+export interface AiConnectedProvider {
+    id: number;
+    provider: string;
+    provider_label: string;
+    display_name: string;
+    label: string | null;
+    base_url: string | null;
+    endpoint: string | null;
     masked_key: string | null;
     key_set_at: string | null;
     key_set_by?: string | null;
+    model: string;
+    is_active: boolean;
     last_checked_at: string | null;
     last_check_passed: boolean;
     last_check_error: string | null;
-    model: string | null;
-    monthly_budget_usd: number | null;
+    input_rate_per_mtok: number | null;
+    output_rate_per_mtok: number | null;
+    tracks_spend: boolean;
 }
 
 export interface AiEffectiveConfig {
     driver: AiDriver;
-    key_source: 'tenant' | 'platform' | 'none';
-    model: string;
+    source: 'workspace' | 'platform' | 'none';
+    provider: string | null;
+    provider_label: string | null;
+    model: string | null;
+    tracks_spend: boolean;
     monthly_budget_usd: number;
     configured_driver: string;
-}
-
-export interface AiModelOption {
-    id: string;
-    input_per_mtok_usd: number;
-    output_per_mtok_usd: number;
-    is_platform_default: boolean;
 }
 
 export interface SharedProps {

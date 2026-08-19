@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue';
 import { Link, router, usePage } from '@inertiajs/vue3';
 import {
+    KeyRound,
     CalendarClock,
     LayoutDashboard,
     CalendarDays,
@@ -27,14 +28,19 @@ const flash = computed(() => page.props.flash);
 
 const mobileOpen = ref(false);
 
+// `ownerOnly` entries are filtered out for staff — they would 403 on click,
+// and a menu item that refuses you is worse than no menu item.
 const nav = [
     { label: 'Overview', href: '/admin', icon: LayoutDashboard },
     { label: 'Diary', href: '/admin/bookings', icon: CalendarDays },
     { label: 'Services', href: '/admin/services', icon: Scissors },
     { label: 'Team', href: '/admin/team', icon: Users },
     { label: 'AI usage', href: '/admin/ai', icon: Sparkles },
+    { label: 'AI providers', href: '/admin/ai-providers', icon: KeyRound, ownerOnly: true },
     { label: 'Settings', href: '/admin/settings', icon: Settings },
 ];
+
+const visibleNav = computed(() => nav.filter((item) => !item.ownerOnly || user.value?.is_admin));
 
 // Exact match for the index, prefix match for everything else — otherwise
 // "/admin" stays highlighted on every child page.
@@ -95,7 +101,7 @@ const signOut = (): void => {
 
             <nav class="flex-1 space-y-0.5 overflow-y-auto p-3">
                 <Link
-                    v-for="item in nav"
+                    v-for="item in visibleNav"
                     :key="item.href"
                     :href="item.href"
                     class="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition"

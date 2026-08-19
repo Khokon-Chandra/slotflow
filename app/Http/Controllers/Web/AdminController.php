@@ -6,12 +6,13 @@ namespace App\Http\Controllers\Web;
 
 use App\Ai\AiManager;
 use App\Ai\Credentials\AiCredentials;
+use App\Ai\Providers\ProviderRegistry;
 use App\Ai\Tasks\GenerateDailyBriefing;
 use App\Domain\Reporting\DayStatistics;
 use App\Enums\BookingStatus;
 use App\Enums\RiskBand;
 use App\Http\Controllers\Controller;
-use App\Http\Resources\AiSettingsResource;
+use App\Http\Resources\AiProviderCredentialResource;
 use App\Models\AiInteraction;
 use App\Models\AvailabilityRule;
 use App\Models\Booking;
@@ -302,27 +303,16 @@ final class AdminController extends Controller
             ],
             'config' => [
                 'driver' => (string) config('ai.driver'),
+                'provider' => $this->credentials->provider()?->label,
                 'model' => $this->credentials->model(),
-                'effort' => (string) config('ai.claude.effort'),
+                'effort' => (string) config('ai.request.effort'),
                 'cache_ttl' => (int) config('ai.cache_ttl'),
                 'key_source' => $this->credentials->source(),
+                'tracks_spend' => $this->credentials->resolve()?->tracksSpend() ?? false,
             ],
 
-            // Credentials are the owner's business. Staff read the usage
-            // figures on this page and see nothing about the key that pays
-            // for them — the same line a payment method sits on.
+            // Credentials live on their own page now — this one is telemetry.
             'canManageCredentials' => $isOwner,
-            'aiSettings' => $isOwner
-                ? new AiSettingsResource($this->aiSettings()->load('setBy'))
-                : null,
-            'aiEffective' => $isOwner ? [
-                'driver' => app(AiManager::class)->isLive() ? 'claude' : 'heuristic',
-                'key_source' => $this->credentials->source(),
-                'model' => $this->credentials->model(),
-                'monthly_budget_usd' => $this->credentials->monthlyBudgetUsd(),
-                'configured_driver' => (string) config('ai.driver'),
-            ] : null,
-            'aiModels' => $isOwner ? $this->credentials->availableModels() : [],
         ]);
     }
 
@@ -351,14 +341,47 @@ final class AdminController extends Controller
     }
 
     /**
-     * This workspace's credential row, unsaved if it does not exist yet, so
-     * the page has the same shape whether or not anything is configured.
+     * Model providers.
+     *
+     * Its own page rather than a panel on the usage screen: connecting a
+     * provider is a credential-management job, done rarely and by one person,
+     * and it has nothing to do with reading yesterday's token spend.
      */
-    private function aiSettings(): TenantAiSettings
+    public function aiProviders(Request $request): Response
     {
-        return TenantAiSettings::query()
-            ->withoutTenantScope()
-            ->firstOrNew(['tenant_id' => $this->tenants->require()->id]);
+        $this->authorize('viewAny', TenantAiSettings::class);
+
+        $resolved = $this->credentials->resolve();
+        $settings = $this->credentials->settings();
+
+        return Inertia::render('Admin/AiProviders', [
+            /*
+             * `->resolve()`, not the collection itself.
+             *
+             * A JSON response unwraps a nested resource collection, but Inertia
+             * serialises it as-is — so the page would receive
+             * `{ data: [...] }` where it expects an array, and `v-for` would
+             * iterate the wrapper's one key and render a bogus row. It looks
+             * fine until the list is non-empty.
+             */
+            'connected' => AiProviderCredentialResource::collection($this->credentials->all())->resolve(),
+            'catalogue' => app(ProviderRegistry::class)->toArray(),
+            'effective' => [
+                'driver' => app(AiManager::class)->isLive() ? ($resolved?->provider->id ?? 'heuristic') : 'heuristic',
+                'source' => $this->credentials->source(),
+                'provider' => $resolved?->provider->id,
+                'provider_label' => $resolved?->displayName(),
+                'model' => $resolved?->model,
+                'tracks_spend' => $resolved?->tracksSpend() ?? false,
+                'monthly_budget_usd' => $this->credentials->monthlyBudgetUsd(),
+                'configured_driver' => (string) config('ai.driver'),
+            ],
+            'settings' => [
+                'monthly_budget_usd' => $settings?->monthly_budget_usd === null
+                    ? null
+                    : (float) $settings->monthly_budget_usd,
+            ],
+        ]);
     }
 
     /**
