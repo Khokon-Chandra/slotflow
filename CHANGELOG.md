@@ -9,6 +9,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ### Added
 
+- **Any AI provider, per workspace.** Anthropic, OpenAI, DeepSeek, or any endpoint that speaks OpenAI Chat Completions — Groq, Together, Mistral, xAI, OpenRouter, Ollama, LM Studio. The catalogue is `config/ai.php`, so adding a provider is an entry rather than a class
+- **Its own page and menu entry** at Admin → AI providers. Connecting a provider is a credential job done rarely by one person, and has nothing to do with reading yesterday's token spend
+- One credential per provider per workspace, exactly one in force at a time. Connecting the first activates it; disconnecting the active one promotes the next
+- Per-model rate overrides, so spend tracking works for models this application has no published rates for
+
 - **Bring-your-own Anthropic key, per workspace.** An owner installs a key at Admin → AI usage. It is verified against the Anthropic API before it is stored, encrypted at rest with `APP_KEY`, never returned by any endpoint, and never logged. Removing it falls back to the platform key, then to the built-in implementations — nothing breaks at any step
 - Per-workspace model choice, restricted to models the app has prices for, and a per-workspace monthly spend ceiling
 - A re-check action, because a key that verified when it was saved can be revoked later
