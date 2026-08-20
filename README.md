@@ -262,6 +262,7 @@ Two things worth pulling out.
 | [docs/DECISIONS.md](docs/DECISIONS.md) | Decision records — what was chosen, what was rejected, and what would change it |
 | [docs/TESTING.md](docs/TESTING.md) | How the suite is structured and why the concurrency test forks |
 | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Running it somewhere real |
+| [docs/USER-MANUAL-BN.md](docs/USER-MANUAL-BN.md) | বাংলা ব্যবহারকারী নির্দেশিকা — the whole app in Bengali, use case by use case |
 
 ## What this is not
 
