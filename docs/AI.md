@@ -212,60 +212,134 @@ Four tests cover the degradation paths, including one that binds a client which 
 
 ---
 
-## Credentials
+## Providers
 
-A key can come from two places, and the resolution order is the product decision:
+A workspace connects a provider at **Admin → AI providers**. The catalogue is
+configuration, not code:
+
+| Provider | Driver | Structured output |
+|---|---|---|
+| **Anthropic** | Official SDK | JSON schema, enforced at generation |
+| **OpenAI** | OpenAI Chat Completions over HTTP | JSON schema, enforced |
+| **DeepSeek** | Same driver, different base URL | JSON mode only — schema goes in the prompt |
+| **Custom** | Same driver, workspace-supplied URL | JSON mode only |
+
+That last row is the point of the design. Groq, Together, Mistral, xAI,
+OpenRouter, Ollama and LM Studio all speak `POST {base}/chat/completions` with
+the same body, so connecting one is a name, a URL and a key — no new class, no
+new dependency, no release. Adding a provider *to the catalogue* is an entry in
+`config/ai.php`.
+
+There are two drivers, and there are meant to be two:
+
+- [`AnthropicDriver`](../app/Ai/Drivers/AnthropicDriver.php) — its request and
+  response shapes differ, and the official SDK is worth having for the provider
+  this application defaults to.
+- [`OpenAiCompatibleDriver`](../app/Ai/Drivers/OpenAiCompatibleDriver.php) —
+  raw HTTP against the wire format rather than any single vendor's SDK. A
+  package per provider would be a dependency per provider; the shape itself is
+  small, stable and shared.
+
+### Structured output is not uniform, and the code says so
+
+Where a provider supports it, the schema is sent as `response_format.json_schema`
+and generation is constrained to it. Where it does not — DeepSeek, most
+self-hosted runtimes — the driver falls back to `response_format:
+{type: "json_object"}`, which guarantees syntactically valid JSON but not the
+right shape, and puts the schema in the prompt.
+
+The second path is genuinely weaker, and `supports_json_schema` is part of the
+provider contract rather than a footnote. The driver also strips code fences on
+that path, because providers wrap JSON in them despite being asked not to.
+
+### Resolution
 
 | Source | Set where | Who pays |
 |---|---|---|
-| **Workspace** | Admin panel → AI usage → Anthropic API key | The business |
+| **Workspace** | Admin → AI providers | The business |
 | **Platform** | `ANTHROPIC_API_KEY` in `.env` | Whoever runs the deployment |
 | Neither | — | Nobody. The heuristic driver answers |
 
-A single-tenant deployment configures `.env` once and never opens the settings page. A platform reselling access lets each business bring its own key and its own ceiling. Neither needs to know the other exists — [`AiCredentials`](../app/Ai/Credentials/AiCredentials.php) answers "which key, which model, which budget" and everything else asks it.
+Exactly one credential is in force per workspace at a time. Connecting the
+first makes it active; disconnecting the active one promotes the next verified
+credential rather than leaving a workspace with keys and none in use.
 
-### The key is verified before it is stored
+### Credentials are verified before they are stored
 
-Saving a key calls `models.retrieve()` with it first. That validates the credential *and* that the account can reach the chosen model, costs no tokens, and returns in well under a second — so the form can be synchronous without feeling broken.
+Connecting calls the provider first — `models.retrieve` on Anthropic,
+`GET {base}/models` elsewhere. Both validate the credential and the model, cost
+no tokens, and return fast enough for the form to be synchronous.
 
-If the check fails, **nothing is written**. Storing an unverified key would be worse than storing none: the workspace would look configured, every call would quietly fall back, and the only evidence would be a `degraded_reason` nobody was reading.
+If the check fails, **nothing is written**. Storing an unverified key would be
+worse than storing none: the workspace would look configured, every call would
+quietly fall back, and the only evidence would be a `degraded_reason` nobody
+was reading.
 
-The API's error is translated into something actionable rather than passed through:
+Whether the wanted model appears in a `/models` listing is treated as a *hint*,
+not a verdict — gateways and self-hosted runtimes routinely return partial
+lists, and refusing a working credential over an incomplete listing is worse
+than accepting one that later 404s, which the driver reports anyway.
 
-| Status | What the owner is told |
-|---|---|
-| 401 | That key was rejected. Check you copied all of it, and that it has not been revoked |
-| 403 | Valid, but not permitted to use this model. Pick another, or check the key's workspace |
-| 404 | That model does not exist, or this key cannot see it |
-| 429 | Rate limited right now. It is probably fine — try again in a moment |
+There is also a **re-check** action, because a credential that verified on
+Tuesday can be revoked on Wednesday. `last_check_passed` is worded as *when it
+was last known good*, not as a claim about now.
 
-There is also a **re-check** action, because a key that verified on Tuesday can be revoked on Wednesday. `last_check_passed` is deliberately worded as *when it was last known good*, not as a claim that it works now.
+### How keys are kept
 
-### How it is kept
-
-- **Encrypted at rest** with Laravel's `encrypted` cast, which uses `APP_KEY`. ⚠️ Rotating `APP_KEY` without re-encrypting makes stored keys unreadable; workspaces would fall back to the platform key or the heuristic driver until they re-enter theirs.
-- **Never returned.** No endpoint has a branch that can emit it — only `sk-ant-…Ab12`, enough to recognise which key is installed and useless to anyone who obtains it. A test asserts the plaintext appears in none of the four responses.
-- **Never logged.** The verifier catches SDK exceptions and logs the exception class and the model, never the credential.
-- **Not mass-assignable.** `api_key` is absent from `Fillable`; the only path to the column is [`StoreApiKey`](../app/Ai/Credentials/StoreApiKey.php), which verifies first.
-- **Owner only.** Staff use every AI feature and read the usage page, and see nothing about the key that pays for it — the same line a payment method sits on.
+- **Encrypted at rest** with Laravel's `encrypted` cast, which uses `APP_KEY`.
+  ⚠️ Rotating `APP_KEY` without re-encrypting makes stored keys unreadable;
+  workspaces fall back to the platform credential or the heuristic driver until
+  someone re-enters theirs.
+- **Never returned.** No endpoint has a branch that can emit one — only
+  `…Ab12`. A test asserts the plaintext appears in none of four responses.
+- **Never logged.** The verifier catches exceptions and logs the class, the
+  provider and the model, never the credential. The HTTP driver never logs a
+  response body, which can echo the request.
+- **Not mass-assignable.** `api_key` is absent from `Fillable`; the only path is
+  [`StoreProviderCredential`](../app/Ai/Credentials/StoreProviderCredential.php).
+- **Owner only.** Staff use every AI feature and read the usage page, and see
+  nothing about the credential that pays for it — the same line a payment
+  method sits on.
+- **https only**, except `localhost`. A bearer token must not cross a network
+  in the clear; a runtime on the same machine is a different matter.
 
 ### One client per key, never one client shared
 
-The Anthropic SDK client is built by [`ClaudeClientFactory`](../app/Ai/Credentials/ClaudeClientFactory.php) and cached **keyed by the key itself**.
+The Anthropic SDK client is built by
+[`AnthropicClientFactory`](../app/Ai/Credentials/AnthropicClientFactory.php)
+and cached **keyed by the key itself**. Constructing it runs PSR-18 discovery,
+so rebuilding per call is wasteful — but a single cached client handed to every
+workspace would send one tenant's request on another's credential, and nothing
+would say so. Keying by the key makes that impossible rather than unlikely, and
+the map is keyed by a hash so a memory dump does not spill credentials.
 
-Constructing it runs PSR-18 discovery, so rebuilding per call is wasteful — but a single cached client handed to every workspace would send one tenant's request on another tenant's credential, and nothing would say so. Keying the cache by the key makes that impossible rather than merely unlikely, and the map is keyed by a hash so a memory dump does not spill credentials.
-
-The same reasoning applies to the driver: `ClaudeClient` resolves credentials **per call**, not at construction. A queue worker handles jobs for several workspaces in one process.
-
-### Model choice
-
-A workspace may pick any model this application has prices for, and no others. Allowing an unpriced model means every call reports a spend of zero — and a budget you cannot measure is not a budget.
+Both drivers resolve credentials **per call**, never at construction. A queue
+worker handles jobs for several workspaces in one process.
 
 ---
 
-## Cost
+## Cost, and the refusal to guess it
 
-Spend is bounded three ways.
+Rates are USD per million tokens, and they exist so this application can
+estimate spend and enforce a ceiling.
+
+**Where a rate is unknown, it stays unknown.** The catalogue ships published
+rates for Anthropic models and none for the rest, because a number that was
+right when this file was written and wrong by the time you read it is worse
+than no number: a wrong rate produces a confident, incorrect estimate, and
+nobody re-checks a figure that looks plausible.
+
+So an unpriced model reports cost as **untracked**, never as zero — the two
+look identical in a sum and mean opposite things. The admin panel says so, asks
+for the rates, and links to the provider's pricing page. Enter them and spend
+tracking and the ceiling start working.
+
+The monthly ceiling is not enforced while spend is untracked. A limit measured
+against an unmeasured cost is not a limit, and pretending otherwise is how a
+budget guard silently stops working.
+
+
+Beyond that, spend is bounded three ways.
 
 **A monthly ceiling.** `AI_MONTHLY_BUDGET_USD` (default 25). Crossing it stops the API calls and serves the fallback until the month rolls over. Nothing breaks; answers get simpler. That is the right failure mode for a spend limit, and the difference between a bad morning and a bad quarter.
 
