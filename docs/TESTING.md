@@ -5,8 +5,8 @@
 ```
 
 ```
-Tests:    190 passed (626 assertions)
-Duration: 4.80s
+Tests:    203 passed (696 assertions)
+Duration: 5.22s
 ```
 
 ---
@@ -39,7 +39,9 @@ mysql -e "CREATE DATABASE slotflow_testing"   # or docker compose up -d
 
 ## No network, ever
 
-`phpunit.xml` sets `AI_DRIVER=heuristic` and an empty `ANTHROPIC_API_KEY`.
+`phpunit.xml` sets `AI_DRIVER=heuristic` and an empty `ANTHROPIC_API_KEY`, and `TestCase::setUp()` calls `Http::preventStrayRequests()`.
+
+That last one turns the claim into a guarantee: any request through Laravel's HTTP client that a test has not explicitly faked fails loudly and names the URL. It found one the day it was added — rendering an Inertia page was reaching for an SSR server, because Inertia ships with SSR enabled and silently falls back when nothing answers. In production that is a failed connection attempt on every page load, forever.
 
 That constrains nothing, because the heuristic driver is a real implementation rather than a stub — the same code path that serves the demo when no key is configured. So the AI features are genuinely under test, CI needs no secret, and running the suite never costs money.
 
@@ -156,6 +158,9 @@ Worth listing, because "we have tests" is a claim and this is evidence.
 | A skipped test | An over-wide availability range threw from a constructor and became a 500 instead of a 422 |
 | An empty-metrics test | `Collection` offset access without `??` semantics threw on a workspace with no completed bookings |
 | Adding customer sign-out | The public header branched admin-or-guest, so a signed-in customer matched neither arm and had no way to log out. The route had worked the whole time; nothing exercised it as a customer |
+| Widening `shouldBeStrict` beyond local | "Promote the next credential" used `update()` on a non-fillable column, so it silently did nothing — and its test passed for the wrong reason |
+| `Http::preventStrayRequests()` | Inertia SSR was on by default, so page renders in tests reached for a server on port 5173 |
+| An Inertia page assertion | A resource collection reached the page as `{ data: [...] }` rather than an array, because JSON responses unwrap nested collections and Inertia does not. `v-for` would have rendered one row that did not exist |
 | Verifying credentials by hand | `.env.example` pinned `SANCTUM_STATEFUL_DOMAINS` to port 8000, so the admin panel 401s on any other port. Laravel's default already derives it from `APP_URL`; the override was worse than no override |
 
 The second one is the reason this project has no custom test reporter. It was swallowing fatal errors and reporting an exit code with no output; removing it made a class-load failure visible immediately.

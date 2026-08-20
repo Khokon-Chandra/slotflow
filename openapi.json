@@ -268,13 +268,13 @@
                 }
             }
         },
-        "/admin/ai-settings": {
+        "/admin/ai-providers": {
             "get": {
-                "operationId": "aiSettings.show",
-                "description": "The stored settings, what is actually in force after platform fallback,\nand the models available to choose from.",
-                "summary": "Current AI configuration",
+                "operationId": "aiProvider.index",
+                "description": "What this workspace has connected, which one is in force after platform\nfallback, and every provider it could connect.",
+                "summary": "Connected providers and the catalogue",
                 "tags": [
-                    "AiSettings"
+                    "AiProvider"
                 ],
                 "responses": {
                     "200": {
@@ -287,154 +287,56 @@
                                         "data": {
                                             "type": "object",
                                             "properties": {
-                                                "settings": {
-                                                    "allOf": [
-                                                        {
-                                                            "$ref": "#/components/schemas/AiSettingsResource"
-                                                        },
-                                                        {
-                                                            "type": "object",
-                                                            "required": [
-                                                                "key_set_by"
-                                                            ]
-                                                        }
-                                                    ]
-                                                },
-                                                "effective": {
-                                                    "type": "object",
-                                                    "properties": {
-                                                        "driver": {
-                                                            "type": "string",
-                                                            "enum": [
-                                                                "claude",
-                                                                "heuristic"
-                                                            ]
-                                                        },
-                                                        "key_source": {
-                                                            "type": "string",
-                                                            "enum": [
-                                                                "platform",
-                                                                "none",
-                                                                "tenant"
-                                                            ]
-                                                        },
-                                                        "model": {
-                                                            "type": "string"
-                                                        },
-                                                        "monthly_budget_usd": {
-                                                            "type": "number"
-                                                        },
-                                                        "configured_driver": {
-                                                            "type": "string"
-                                                        }
-                                                    },
-                                                    "required": [
-                                                        "driver",
-                                                        "key_source",
-                                                        "model",
-                                                        "monthly_budget_usd",
-                                                        "configured_driver"
-                                                    ]
-                                                },
-                                                "available_models": {
+                                                "connected": {
                                                     "type": "array",
                                                     "items": {
-                                                        "type": "object",
-                                                        "properties": {
-                                                            "id": {
-                                                                "type": "string"
+                                                        "allOf": [
+                                                            {
+                                                                "$ref": "#/components/schemas/AiProviderCredentialResource"
                                                             },
-                                                            "input_per_mtok_usd": {
-                                                                "type": "string"
-                                                            },
-                                                            "output_per_mtok_usd": {
-                                                                "type": "string"
-                                                            },
-                                                            "is_platform_default": {
-                                                                "type": "boolean"
+                                                            {
+                                                                "type": "object",
+                                                                "required": [
+                                                                    "key_set_by"
+                                                                ]
                                                             }
-                                                        },
-                                                        "required": [
-                                                            "id",
-                                                            "input_per_mtok_usd",
-                                                            "output_per_mtok_usd",
-                                                            "is_platform_default"
                                                         ]
                                                     }
-                                                }
-                                            },
-                                            "required": [
-                                                "settings",
-                                                "effective",
-                                                "available_models"
-                                            ]
-                                        }
-                                    },
-                                    "required": [
-                                        "data"
-                                    ]
-                                }
-                            }
-                        }
-                    },
-                    "403": {
-                        "$ref": "#/components/responses/AuthorizationException"
-                    },
-                    "401": {
-                        "$ref": "#/components/responses/AuthenticationException"
-                    }
-                }
-            },
-            "put": {
-                "operationId": "aiSettings.update",
-                "description": "Both accept null, meaning \"use the platform default\".",
-                "summary": "Update model and budget",
-                "tags": [
-                    "AiSettings"
-                ],
-                "requestBody": {
-                    "content": {
-                        "application/json": {
-                            "schema": {
-                                "$ref": "#/components/schemas/UpdateAiSettingsRequest"
-                            }
-                        }
-                    }
-                },
-                "responses": {
-                    "200": {
-                        "description": "",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "type": "object",
-                                    "properties": {
-                                        "data": {
-                                            "type": "object",
-                                            "properties": {
-                                                "settings": {
-                                                    "$ref": "#/components/schemas/AiSettingsResource"
                                                 },
                                                 "effective": {
                                                     "type": "object",
                                                     "properties": {
                                                         "driver": {
+                                                            "type": "string"
+                                                        },
+                                                        "source": {
                                                             "type": "string",
                                                             "enum": [
-                                                                "claude",
-                                                                "heuristic"
+                                                                "workspace",
+                                                                "platform",
+                                                                "none"
                                                             ]
                                                         },
-                                                        "key_source": {
-                                                            "type": "string",
-                                                            "enum": [
-                                                                "platform",
-                                                                "none",
-                                                                "tenant"
+                                                        "provider": {
+                                                            "type": [
+                                                                "string",
+                                                                "null"
+                                                            ]
+                                                        },
+                                                        "provider_label": {
+                                                            "type": [
+                                                                "string",
+                                                                "null"
                                                             ]
                                                         },
                                                         "model": {
-                                                            "type": "string"
+                                                            "type": [
+                                                                "string",
+                                                                "null"
+                                                            ]
+                                                        },
+                                                        "tracks_spend": {
+                                                            "type": "boolean"
                                                         },
                                                         "monthly_budget_usd": {
                                                             "type": "number"
@@ -445,16 +347,39 @@
                                                     },
                                                     "required": [
                                                         "driver",
-                                                        "key_source",
+                                                        "source",
+                                                        "provider",
+                                                        "provider_label",
                                                         "model",
+                                                        "tracks_spend",
                                                         "monthly_budget_usd",
                                                         "configured_driver"
                                                     ]
+                                                },
+                                                "settings": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "monthly_budget_usd": {
+                                                            "type": [
+                                                                "number",
+                                                                "null"
+                                                            ]
+                                                        }
+                                                    },
+                                                    "required": [
+                                                        "monthly_budget_usd"
+                                                    ]
+                                                },
+                                                "catalogue": {
+                                                    "type": "array",
+                                                    "items": {}
                                                 }
                                             },
                                             "required": [
+                                                "connected",
+                                                "effective",
                                                 "settings",
-                                                "effective"
+                                                "catalogue"
                                             ]
                                         }
                                     },
@@ -465,32 +390,39 @@
                             }
                         }
                     },
-                    "401": {
-                        "$ref": "#/components/responses/AuthenticationException"
-                    },
-                    "422": {
-                        "$ref": "#/components/responses/ValidationException"
-                    },
                     "403": {
                         "$ref": "#/components/responses/AuthorizationException"
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
                     }
                 }
             }
         },
-        "/admin/ai-settings/key": {
+        "/admin/ai-providers/{provider}": {
             "put": {
-                "operationId": "aiSettings.storeKey",
-                "description": "The key is checked against the Anthropic API first. If the check fails\nnothing is written and the response explains why, so a bad paste is a\nmessage rather than a silently broken workspace.",
-                "summary": "Install an API key",
+                "operationId": "aiProvider.store",
+                "description": "The credential is checked against the provider first. If the check\nfails, nothing is written and the response explains why \u2014 a bad paste is\na message rather than a silently broken workspace.\n\nThe first provider a workspace connects becomes the one in force.",
+                "summary": "Connect a provider",
                 "tags": [
-                    "AiSettings"
+                    "AiProvider"
+                ],
+                "parameters": [
+                    {
+                        "name": "provider",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
                 ],
                 "requestBody": {
                     "required": true,
                     "content": {
                         "application/json": {
                             "schema": {
-                                "$ref": "#/components/schemas/StoreAiKeyRequest"
+                                "$ref": "#/components/schemas/StoreProviderCredentialRequest"
                             }
                         }
                     }
@@ -506,29 +438,56 @@
                                         "data": {
                                             "type": "object",
                                             "properties": {
-                                                "settings": {
-                                                    "$ref": "#/components/schemas/AiSettingsResource"
+                                                "connected": {
+                                                    "type": "array",
+                                                    "items": {
+                                                        "allOf": [
+                                                            {
+                                                                "$ref": "#/components/schemas/AiProviderCredentialResource"
+                                                            },
+                                                            {
+                                                                "type": "object",
+                                                                "required": [
+                                                                    "key_set_by"
+                                                                ]
+                                                            }
+                                                        ]
+                                                    }
                                                 },
                                                 "effective": {
                                                     "type": "object",
                                                     "properties": {
                                                         "driver": {
+                                                            "type": "string"
+                                                        },
+                                                        "source": {
                                                             "type": "string",
                                                             "enum": [
-                                                                "claude",
-                                                                "heuristic"
+                                                                "workspace",
+                                                                "platform",
+                                                                "none"
                                                             ]
                                                         },
-                                                        "key_source": {
-                                                            "type": "string",
-                                                            "enum": [
-                                                                "platform",
-                                                                "none",
-                                                                "tenant"
+                                                        "provider": {
+                                                            "type": [
+                                                                "string",
+                                                                "null"
+                                                            ]
+                                                        },
+                                                        "provider_label": {
+                                                            "type": [
+                                                                "string",
+                                                                "null"
                                                             ]
                                                         },
                                                         "model": {
-                                                            "type": "string"
+                                                            "type": [
+                                                                "string",
+                                                                "null"
+                                                            ]
+                                                        },
+                                                        "tracks_spend": {
+                                                            "type": "boolean"
                                                         },
                                                         "monthly_budget_usd": {
                                                             "type": "number"
@@ -539,19 +498,42 @@
                                                     },
                                                     "required": [
                                                         "driver",
-                                                        "key_source",
+                                                        "source",
+                                                        "provider",
+                                                        "provider_label",
                                                         "model",
+                                                        "tracks_spend",
                                                         "monthly_budget_usd",
                                                         "configured_driver"
                                                     ]
+                                                },
+                                                "settings": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "monthly_budget_usd": {
+                                                            "type": [
+                                                                "number",
+                                                                "null"
+                                                            ]
+                                                        }
+                                                    },
+                                                    "required": [
+                                                        "monthly_budget_usd"
+                                                    ]
+                                                },
+                                                "catalogue": {
+                                                    "type": "array",
+                                                    "items": {}
                                                 },
                                                 "verification": {
                                                     "type": "string"
                                                 }
                                             },
                                             "required": [
-                                                "settings",
+                                                "connected",
                                                 "effective",
+                                                "settings",
+                                                "catalogue",
                                                 "verification"
                                             ]
                                         }
@@ -575,11 +557,21 @@
                 }
             },
             "delete": {
-                "operationId": "aiSettings.destroyKey",
-                "description": "Model and budget preferences survive, so putting a key back later does\nnot mean reconfiguring everything else. AI features keep working \u2014\nthey fall back to the platform key if one exists, and to the built-in\nimplementations if not.",
-                "summary": "Remove the API key",
+                "operationId": "aiProvider.destroy",
+                "description": "If it was the one in force, the next verified credential takes over.\nNothing breaks either way: with no credential at all, AI features fall\nback to the built-in implementations.",
+                "summary": "Disconnect a provider",
                 "tags": [
-                    "AiSettings"
+                    "AiProvider"
+                ],
+                "parameters": [
+                    {
+                        "name": "provider",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
                 ],
                 "responses": {
                     "200": {
@@ -592,29 +584,56 @@
                                         "data": {
                                             "type": "object",
                                             "properties": {
-                                                "settings": {
-                                                    "$ref": "#/components/schemas/AiSettingsResource"
+                                                "connected": {
+                                                    "type": "array",
+                                                    "items": {
+                                                        "allOf": [
+                                                            {
+                                                                "$ref": "#/components/schemas/AiProviderCredentialResource"
+                                                            },
+                                                            {
+                                                                "type": "object",
+                                                                "required": [
+                                                                    "key_set_by"
+                                                                ]
+                                                            }
+                                                        ]
+                                                    }
                                                 },
                                                 "effective": {
                                                     "type": "object",
                                                     "properties": {
                                                         "driver": {
+                                                            "type": "string"
+                                                        },
+                                                        "source": {
                                                             "type": "string",
                                                             "enum": [
-                                                                "claude",
-                                                                "heuristic"
+                                                                "workspace",
+                                                                "platform",
+                                                                "none"
                                                             ]
                                                         },
-                                                        "key_source": {
-                                                            "type": "string",
-                                                            "enum": [
-                                                                "platform",
-                                                                "none",
-                                                                "tenant"
+                                                        "provider": {
+                                                            "type": [
+                                                                "string",
+                                                                "null"
+                                                            ]
+                                                        },
+                                                        "provider_label": {
+                                                            "type": [
+                                                                "string",
+                                                                "null"
                                                             ]
                                                         },
                                                         "model": {
-                                                            "type": "string"
+                                                            "type": [
+                                                                "string",
+                                                                "null"
+                                                            ]
+                                                        },
+                                                        "tracks_spend": {
+                                                            "type": "boolean"
                                                         },
                                                         "monthly_budget_usd": {
                                                             "type": "number"
@@ -625,16 +644,39 @@
                                                     },
                                                     "required": [
                                                         "driver",
-                                                        "key_source",
+                                                        "source",
+                                                        "provider",
+                                                        "provider_label",
                                                         "model",
+                                                        "tracks_spend",
                                                         "monthly_budget_usd",
                                                         "configured_driver"
                                                     ]
+                                                },
+                                                "settings": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "monthly_budget_usd": {
+                                                            "type": [
+                                                                "number",
+                                                                "null"
+                                                            ]
+                                                        }
+                                                    },
+                                                    "required": [
+                                                        "monthly_budget_usd"
+                                                    ]
+                                                },
+                                                "catalogue": {
+                                                    "type": "array",
+                                                    "items": {}
                                                 }
                                             },
                                             "required": [
+                                                "connected",
+                                                "effective",
                                                 "settings",
-                                                "effective"
+                                                "catalogue"
                                             ]
                                         }
                                     },
@@ -654,13 +696,23 @@
                 }
             }
         },
-        "/admin/ai-settings/verify": {
+        "/admin/ai-providers/{provider}/activate": {
             "post": {
-                "operationId": "aiSettings.verify",
-                "description": "A key that verified when it was saved can be revoked later. This is how\nan owner finds that out on purpose, rather than by noticing the AI has\ngone quiet.",
-                "summary": "Re-check the stored key",
+                "operationId": "aiProvider.activate",
+                "description": "Exactly one credential is active at a time; the rest are demoted in the\nsame transaction.",
+                "summary": "Make a provider the one in force",
                 "tags": [
-                    "AiSettings"
+                    "AiProvider"
+                ],
+                "parameters": [
+                    {
+                        "name": "provider",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
                 ],
                 "responses": {
                     "200": {
@@ -673,29 +725,56 @@
                                         "data": {
                                             "type": "object",
                                             "properties": {
-                                                "settings": {
-                                                    "$ref": "#/components/schemas/AiSettingsResource"
+                                                "connected": {
+                                                    "type": "array",
+                                                    "items": {
+                                                        "allOf": [
+                                                            {
+                                                                "$ref": "#/components/schemas/AiProviderCredentialResource"
+                                                            },
+                                                            {
+                                                                "type": "object",
+                                                                "required": [
+                                                                    "key_set_by"
+                                                                ]
+                                                            }
+                                                        ]
+                                                    }
                                                 },
                                                 "effective": {
                                                     "type": "object",
                                                     "properties": {
                                                         "driver": {
+                                                            "type": "string"
+                                                        },
+                                                        "source": {
                                                             "type": "string",
                                                             "enum": [
-                                                                "claude",
-                                                                "heuristic"
+                                                                "workspace",
+                                                                "platform",
+                                                                "none"
                                                             ]
                                                         },
-                                                        "key_source": {
-                                                            "type": "string",
-                                                            "enum": [
-                                                                "platform",
-                                                                "none",
-                                                                "tenant"
+                                                        "provider": {
+                                                            "type": [
+                                                                "string",
+                                                                "null"
+                                                            ]
+                                                        },
+                                                        "provider_label": {
+                                                            "type": [
+                                                                "string",
+                                                                "null"
                                                             ]
                                                         },
                                                         "model": {
-                                                            "type": "string"
+                                                            "type": [
+                                                                "string",
+                                                                "null"
+                                                            ]
+                                                        },
+                                                        "tracks_spend": {
+                                                            "type": "boolean"
                                                         },
                                                         "monthly_budget_usd": {
                                                             "type": "number"
@@ -706,11 +785,173 @@
                                                     },
                                                     "required": [
                                                         "driver",
-                                                        "key_source",
+                                                        "source",
+                                                        "provider",
+                                                        "provider_label",
                                                         "model",
+                                                        "tracks_spend",
                                                         "monthly_budget_usd",
                                                         "configured_driver"
                                                     ]
+                                                },
+                                                "settings": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "monthly_budget_usd": {
+                                                            "type": [
+                                                                "number",
+                                                                "null"
+                                                            ]
+                                                        }
+                                                    },
+                                                    "required": [
+                                                        "monthly_budget_usd"
+                                                    ]
+                                                },
+                                                "catalogue": {
+                                                    "type": "array",
+                                                    "items": {}
+                                                }
+                                            },
+                                            "required": [
+                                                "connected",
+                                                "effective",
+                                                "settings",
+                                                "catalogue"
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "$ref": "#/components/responses/AuthorizationException"
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    }
+                }
+            }
+        },
+        "/admin/ai-providers/{provider}/verify": {
+            "post": {
+                "operationId": "aiProvider.verify",
+                "description": "One that verified when it was saved can be revoked later. This is how an\nowner finds that out on purpose, rather than by noticing the AI has gone\nquiet.",
+                "summary": "Re-check a stored credential",
+                "tags": [
+                    "AiProvider"
+                ],
+                "parameters": [
+                    {
+                        "name": "provider",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "connected": {
+                                                    "type": "array",
+                                                    "items": {
+                                                        "allOf": [
+                                                            {
+                                                                "$ref": "#/components/schemas/AiProviderCredentialResource"
+                                                            },
+                                                            {
+                                                                "type": "object",
+                                                                "required": [
+                                                                    "key_set_by"
+                                                                ]
+                                                            }
+                                                        ]
+                                                    }
+                                                },
+                                                "effective": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "driver": {
+                                                            "type": "string"
+                                                        },
+                                                        "source": {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "workspace",
+                                                                "platform",
+                                                                "none"
+                                                            ]
+                                                        },
+                                                        "provider": {
+                                                            "type": [
+                                                                "string",
+                                                                "null"
+                                                            ]
+                                                        },
+                                                        "provider_label": {
+                                                            "type": [
+                                                                "string",
+                                                                "null"
+                                                            ]
+                                                        },
+                                                        "model": {
+                                                            "type": [
+                                                                "string",
+                                                                "null"
+                                                            ]
+                                                        },
+                                                        "tracks_spend": {
+                                                            "type": "boolean"
+                                                        },
+                                                        "monthly_budget_usd": {
+                                                            "type": "number"
+                                                        },
+                                                        "configured_driver": {
+                                                            "type": "string"
+                                                        }
+                                                    },
+                                                    "required": [
+                                                        "driver",
+                                                        "source",
+                                                        "provider",
+                                                        "provider_label",
+                                                        "model",
+                                                        "tracks_spend",
+                                                        "monthly_budget_usd",
+                                                        "configured_driver"
+                                                    ]
+                                                },
+                                                "settings": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "monthly_budget_usd": {
+                                                            "type": [
+                                                                "number",
+                                                                "null"
+                                                            ]
+                                                        }
+                                                    },
+                                                    "required": [
+                                                        "monthly_budget_usd"
+                                                    ]
+                                                },
+                                                "catalogue": {
+                                                    "type": "array",
+                                                    "items": {}
                                                 },
                                                 "verification": {
                                                     "type": "object",
@@ -741,6 +982,12 @@
                                                                 "string",
                                                                 "null"
                                                             ]
+                                                        },
+                                                        "note": {
+                                                            "type": [
+                                                                "string",
+                                                                "null"
+                                                            ]
                                                         }
                                                     },
                                                     "required": [
@@ -748,13 +995,16 @@
                                                         "model",
                                                         "display_name",
                                                         "context_window",
-                                                        "error"
+                                                        "error",
+                                                        "note"
                                                     ]
                                                 }
                                             },
                                             "required": [
-                                                "settings",
+                                                "connected",
                                                 "effective",
+                                                "settings",
+                                                "catalogue",
                                                 "verification"
                                             ]
                                         }
@@ -766,43 +1016,154 @@
                             }
                         }
                     },
-                    "422": {
+                    "403": {
+                        "$ref": "#/components/responses/AuthorizationException"
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    }
+                }
+            }
+        },
+        "/admin/ai-settings": {
+            "put": {
+                "operationId": "aiProvider.updateSettings",
+                "description": "Currently the monthly spend ceiling. Null means the platform default.",
+                "summary": "Update workspace AI preferences",
+                "tags": [
+                    "AiProvider"
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/UpdateAiSettingsRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
                         "description": "",
                         "content": {
                             "application/json": {
                                 "schema": {
                                     "type": "object",
                                     "properties": {
-                                        "error": {
+                                        "data": {
                                             "type": "object",
                                             "properties": {
-                                                "code": {
-                                                    "type": "string",
-                                                    "const": "no_key_installed"
+                                                "connected": {
+                                                    "type": "array",
+                                                    "items": {
+                                                        "allOf": [
+                                                            {
+                                                                "$ref": "#/components/schemas/AiProviderCredentialResource"
+                                                            },
+                                                            {
+                                                                "type": "object",
+                                                                "required": [
+                                                                    "key_set_by"
+                                                                ]
+                                                            }
+                                                        ]
+                                                    }
                                                 },
-                                                "message": {
-                                                    "type": "string",
-                                                    "const": "This workspace has no key of its own to check."
+                                                "effective": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "driver": {
+                                                            "type": "string"
+                                                        },
+                                                        "source": {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "workspace",
+                                                                "platform",
+                                                                "none"
+                                                            ]
+                                                        },
+                                                        "provider": {
+                                                            "type": [
+                                                                "string",
+                                                                "null"
+                                                            ]
+                                                        },
+                                                        "provider_label": {
+                                                            "type": [
+                                                                "string",
+                                                                "null"
+                                                            ]
+                                                        },
+                                                        "model": {
+                                                            "type": [
+                                                                "string",
+                                                                "null"
+                                                            ]
+                                                        },
+                                                        "tracks_spend": {
+                                                            "type": "boolean"
+                                                        },
+                                                        "monthly_budget_usd": {
+                                                            "type": "number"
+                                                        },
+                                                        "configured_driver": {
+                                                            "type": "string"
+                                                        }
+                                                    },
+                                                    "required": [
+                                                        "driver",
+                                                        "source",
+                                                        "provider",
+                                                        "provider_label",
+                                                        "model",
+                                                        "tracks_spend",
+                                                        "monthly_budget_usd",
+                                                        "configured_driver"
+                                                    ]
+                                                },
+                                                "settings": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "monthly_budget_usd": {
+                                                            "type": [
+                                                                "number",
+                                                                "null"
+                                                            ]
+                                                        }
+                                                    },
+                                                    "required": [
+                                                        "monthly_budget_usd"
+                                                    ]
+                                                },
+                                                "catalogue": {
+                                                    "type": "array",
+                                                    "items": {}
                                                 }
                                             },
                                             "required": [
-                                                "code",
-                                                "message"
+                                                "connected",
+                                                "effective",
+                                                "settings",
+                                                "catalogue"
                                             ]
                                         }
                                     },
                                     "required": [
-                                        "error"
+                                        "data"
                                     ]
                                 }
                             }
                         }
                     },
-                    "403": {
-                        "$ref": "#/components/responses/AuthorizationException"
-                    },
                     "401": {
                         "$ref": "#/components/responses/AuthenticationException"
+                    },
+                    "422": {
+                        "$ref": "#/components/responses/ValidationException"
+                    },
+                    "403": {
+                        "$ref": "#/components/responses/AuthorizationException"
                     }
                 }
             }
@@ -3598,11 +3959,38 @@
     },
     "components": {
         "schemas": {
-            "AiSettingsResource": {
+            "AiProviderCredentialResource": {
                 "type": "object",
                 "properties": {
-                    "has_key": {
-                        "type": "boolean"
+                    "id": {
+                        "type": "integer"
+                    },
+                    "provider": {
+                        "type": "string"
+                    },
+                    "provider_label": {
+                        "type": "string"
+                    },
+                    "display_name": {
+                        "type": "string"
+                    },
+                    "label": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "base_url": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "endpoint": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
                     },
                     "masked_key": {
                         "type": [
@@ -3622,6 +4010,12 @@
                             "null"
                         ]
                     },
+                    "model": {
+                        "type": "string"
+                    },
+                    "is_active": {
+                        "type": "boolean"
+                    },
                     "last_checked_at": {
                         "type": [
                             "string",
@@ -3637,30 +4031,43 @@
                             "null"
                         ]
                     },
-                    "model": {
+                    "input_rate_per_mtok": {
                         "type": [
-                            "string",
+                            "number",
                             "null"
-                        ]
+                        ],
+                        "description": "Null rates mean nobody has told this application what the model\ncosts. Spend is then reported as untracked, never as zero."
                     },
-                    "monthly_budget_usd": {
+                    "output_rate_per_mtok": {
                         "type": [
                             "number",
                             "null"
                         ]
+                    },
+                    "tracks_spend": {
+                        "type": "boolean"
                     }
                 },
                 "required": [
-                    "has_key",
+                    "id",
+                    "provider",
+                    "provider_label",
+                    "display_name",
+                    "label",
+                    "base_url",
+                    "endpoint",
                     "masked_key",
                     "key_set_at",
+                    "model",
+                    "is_active",
                     "last_checked_at",
                     "last_check_passed",
                     "last_check_error",
-                    "model",
-                    "monthly_budget_usd"
+                    "input_rate_per_mtok",
+                    "output_rate_per_mtok",
+                    "tracks_spend"
                 ],
-                "title": "AiSettingsResource"
+                "title": "AiProviderCredentialResource"
             },
             "AvailabilityRuleResource": {
                 "type": "object",
@@ -4186,35 +4593,6 @@
                 ],
                 "title": "StaffResource"
             },
-            "StoreAiKeyRequest": {
-                "type": "object",
-                "properties": {
-                    "api_key": {
-                        "type": "string",
-                        "description": "No prefix rule. `starts_with:sk-ant-` would catch a pasted Stripe key without a\nnetwork round trip, and would also reject a perfectly good key\nthe day Anthropic changes its format. The API is the authority\non whether a credential works, and it is consulted before\nanything is stored \u2014 so a wrong key fails with a clear message\neither way, and a valid one is never refused by a guess about\nits shape.",
-                        "pattern": "^\\S+$",
-                        "minLength": 20,
-                        "maxLength": 400
-                    },
-                    "model": {
-                        "type": [
-                            "string",
-                            "null"
-                        ],
-                        "description": "Restricted to models we can price. Allowing anything else means\ncost tracking silently reports zero, which is worse than\nrefusing the model.",
-                        "enum": [
-                            "claude-opus-5",
-                            "claude-sonnet-5",
-                            "claude-haiku-4-5",
-                            null
-                        ]
-                    }
-                },
-                "required": [
-                    "api_key"
-                ],
-                "title": "StoreAiKeyRequest"
-            },
             "StoreBookingRequest": {
                 "type": "object",
                 "properties": {
@@ -4265,6 +4643,64 @@
                     "customer_timezone"
                 ],
                 "title": "StoreBookingRequest"
+            },
+            "StoreProviderCredentialRequest": {
+                "type": "object",
+                "properties": {
+                    "api_key": {
+                        "type": "string",
+                        "description": "No key-format rule. A prefix check would catch a pasted Stripe key without a network\nround trip, and would also reject a perfectly good key the day a\nprovider changes its format \u2014 or the first time someone connects\na self-hosted runtime that takes any string at all. The provider\nis the authority on whether a credential works, and it is asked\nbefore anything is stored.",
+                        "pattern": "^\\S+$",
+                        "minLength": 8,
+                        "maxLength": 400
+                    },
+                    "model": {
+                        "type": "string",
+                        "maxLength": 96
+                    },
+                    "label": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "description": "Only the custom provider carries these; for the rest the\ncatalogue supplies the endpoint.",
+                        "maxLength": 60
+                    },
+                    "base_url": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "format": "uri",
+                        "pattern": "^https:\\/\\/|^http:\\/\\/(localhost|127\\.0\\.0\\.1|\\[::1\\])(:\\d+)?(\\/|$)",
+                        "maxLength": 255
+                    },
+                    "input_rate_per_mtok": {
+                        "type": [
+                            "number",
+                            "null"
+                        ],
+                        "description": "Optional overrides, so a workspace can track spend for a model\nthis application has no published rates for.",
+                        "minimum": 0,
+                        "maximum": 10000
+                    },
+                    "output_rate_per_mtok": {
+                        "type": [
+                            "number",
+                            "null"
+                        ],
+                        "minimum": 0,
+                        "maximum": 10000
+                    },
+                    "make_active": {
+                        "type": "boolean"
+                    }
+                },
+                "required": [
+                    "api_key",
+                    "model"
+                ],
+                "title": "StoreProviderCredentialRequest"
             },
             "StoreServiceRequest": {
                 "type": "object",
@@ -4508,9 +4944,7 @@
                             "null"
                         ],
                         "enum": [
-                            "claude-opus-5",
-                            "claude-sonnet-5",
-                            "claude-haiku-4-5",
+                            "",
                             null
                         ]
                     },

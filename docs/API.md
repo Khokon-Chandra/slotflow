@@ -75,8 +75,7 @@ Branch on `error.code` — it is the stable part of the contract, and changing o
 | `staff_service_mismatch` | 422 | That person does not offer that service |
 | `invalid_booking_transition` | 422 | Illegal status change. `context.allowed` lists what is |
 | `service_has_bookings` | 409 | Cannot delete; deactivate instead |
-| `ai_key_rejected` | 422 | Anthropic refused the key. `message` says why; nothing was stored |
-| `no_key_installed` | 422 | Asked to re-check a key this workspace does not have |
+| `ai_credential_rejected` | 422 | The provider refused the credential. `message` says why; nothing was stored |
 | `staff_has_bookings` | 409 | Cannot delete; reassign first |
 
 404s never name the model class.
@@ -95,7 +94,7 @@ Get one from `POST /auth/login` or `POST /auth/register`. `POST /auth/logout` re
 
 ## Endpoints
 
-37 in total, all under `/api/v1`.
+38 in total, all under `/api/v1`.
 
 ### Auth
 
@@ -255,62 +254,82 @@ no_show    → (terminal)
 
 An illegal move returns `422 invalid_booking_transition` with `context.allowed`. Marking a no-show updates the customer's counters, which feeds the risk model.
 
-### AI credentials
+### AI providers
 
 | | | Auth |
 |---|---|---|
-| `GET` | `/admin/ai-settings` | **owner** |
+| `GET` | `/admin/ai-providers` | **owner** |
+| `PUT` | `/admin/ai-providers/{provider}` | **owner** |
+| `POST` | `/admin/ai-providers/{provider}/activate` | **owner** |
+| `POST` | `/admin/ai-providers/{provider}/verify` | **owner** |
+| `DELETE` | `/admin/ai-providers/{provider}` | **owner** |
 | `PUT` | `/admin/ai-settings` | **owner** |
-| `PUT` | `/admin/ai-settings/key` | **owner** |
-| `DELETE` | `/admin/ai-settings/key` | **owner** |
-| `POST` | `/admin/ai-settings/verify` | **owner** |
 
-Owner only, and throttled to 12/min — the store and verify endpoints each call Anthropic, so without a limit they are a free way to probe a key for validity.
+Owner only, throttled to 12/min — connecting and re-checking each call out to
+the provider, so without a limit these are a free way to probe a key for
+validity.
 
-A workspace can bring its own Anthropic key. It takes precedence over the platform key in `.env`; remove it and the workspace falls back to the platform key, then to the built-in implementations. Nothing breaks at any step.
+`{provider}` is a catalogue id: `anthropic`, `openai`, `deepseek`, or `custom`
+for any other endpoint that speaks OpenAI Chat Completions.
+
+Every response returns the same object, so a client never merges a partial
+update into its own idea of the state:
 
 ```json
-GET /api/v1/admin/ai-settings
 {
   "data": {
-    "settings": {
-      "has_key": true,
-      "masked_key": "sk-ant-…Ab12",
-      "key_set_at": "2026-08-20T09:14:00+00:00",
-      "last_checked_at": "2026-08-20T09:14:00+00:00",
+    "connected": [{
+      "provider": "anthropic",
+      "display_name": "Anthropic",
+      "masked_key": "…Ab12",
+      "model": "claude-opus-5",
+      "is_active": true,
       "last_check_passed": true,
-      "last_check_error": null,
-      "model": "claude-opus-5",
-      "monthly_budget_usd": 40
-    },
+      "tracks_spend": true
+    }],
     "effective": {
-      "driver": "claude",
-      "key_source": "tenant",
-      "model": "claude-opus-5",
-      "monthly_budget_usd": 40,
+      "driver": "anthropic", "source": "workspace",
+      "provider": "anthropic", "model": "claude-opus-5",
+      "tracks_spend": true, "monthly_budget_usd": 25,
       "configured_driver": "auto"
     },
-    "available_models": [ … ]
+    "settings": { "monthly_budget_usd": null },
+    "catalogue": [ … ]
   }
 }
 ```
 
-`settings` is what this workspace stored. `effective` is what is actually in force after falling back to the platform — they diverge, and the difference is the whole point of the object.
-
-**`PUT /admin/ai-settings/key` verifies before it stores.** The key is checked against Anthropic first; if the check fails, the response is `422 ai_key_rejected` with a message saying why, and **nothing is written**. A workspace that looks configured while every call quietly falls back is worse than one that is plainly unconfigured.
+`connected` is what this workspace has set up. `effective` is what is actually
+in force after falling back to the platform credential — they diverge, and the
+difference is the whole point of the object.
 
 ```json
-PUT /api/v1/admin/ai-settings/key
-{ "api_key": "sk-ant-api03-…", "model": "claude-opus-5" }
+PUT /api/v1/admin/ai-providers/deepseek
+{ "api_key": "sk-…", "model": "deepseek-chat" }
+
+PUT /api/v1/admin/ai-providers/custom
+{
+  "api_key": "…", "model": "llama3.1:8b",
+  "label": "Ollama on the office box",
+  "base_url": "http://localhost:11434/v1",
+  "input_rate_per_mtok": 0, "output_rate_per_mtok": 0
+}
 ```
 
-Three things to know:
+Six things to know:
 
-- **No endpoint returns the key.** Not this one, not `show`, not after an update. Only the last four characters.
-- **`model` is restricted** to models this application has prices for. Anything else would report a spend of zero.
-- **`monthly_budget_usd` and `model` accept null**, meaning "use the platform default".
-
-`POST /admin/ai-settings/verify` re-checks the stored key and records the outcome. A key that verified when it was saved can be revoked later; `last_check_passed` says when it was last known good, not that it works now.
+- **Verified before stored.** The credential is checked against the provider
+  first; a failure is `422 ai_credential_rejected` and **nothing is written**.
+- **No endpoint returns a key.** Only the last four characters.
+- **Exactly one provider is in force.** The first connected becomes active;
+  `activate` switches and demotes the rest in the same transaction.
+- **Disconnecting promotes the next**, rather than leaving a workspace with
+  credentials and none in use.
+- **`base_url` must be https**, except `localhost` — a bearer token must not
+  cross a network in the clear.
+- **Rates are optional and never guessed.** Omit them and cost is reported as
+  untracked rather than as zero; the monthly ceiling is not enforced while it
+  cannot be measured.
 
 ### AI features
 

@@ -1,6 +1,6 @@
 # Database
 
-MySQL 8, fourteen migrations, twelve business tables. Every index in here exists for a query that is written down.
+MySQL 8, fifteen migrations, thirteen business tables. Every index in here exists for a query that is written down.
 
 ---
 
@@ -265,6 +265,7 @@ Thirteen, in dependency order:
 2026_01_01_000900  ai_interactions
 2026_01_01_001000  tenant_ai_settings
 2026_01_01_001200  personal_access_tokens
+2026_01_02_000000  ai_provider_credentials (+ slims tenant_ai_settings)
 ```
 
 Each migration carries a comment explaining the columns whose purpose is not obvious from the name — the buffer split, the wall-clock times, the denormalised counters. A schema is read far more often than it is written.

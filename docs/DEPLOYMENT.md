@@ -56,7 +56,8 @@ QUEUE_CONNECTION=redis
 # SANCTUM_STATEFUL_DOMAINS=admin.example.com
 
 # --- AI ---------------------------------------------------------------------
-AI_DRIVER=auto              # Claude when a key is set, heuristic otherwise
+AI_DRIVER=auto              # a provider when one resolves, heuristic otherwise
+AI_PLATFORM_PROVIDER=anthropic
 ANTHROPIC_API_KEY=
 AI_MODEL=claude-opus-5
 AI_EFFORT=low
@@ -66,7 +67,7 @@ AI_CACHE_TTL=900
 
 **`AI_DRIVER=auto` with no key is a valid production configuration.** Every feature works; the assisted ones are simply plainer. Start there, add a key when you want the difference, and watch `/admin/ai` to see what it costs.
 
-`ANTHROPIC_API_KEY` is the *platform* key — used by any workspace that has not installed its own. An owner can add a workspace key at **Admin → AI usage**, which takes precedence and bills their own account. A single-tenant deployment can ignore that entirely and set `.env` once.
+`ANTHROPIC_API_KEY` is the *platform* credential — used by any workspace that has not connected its own. An owner connects a provider at **Admin → AI providers** (Anthropic, OpenAI, DeepSeek, or any OpenAI-compatible endpoint), which takes precedence and bills their own account. A single-tenant deployment can ignore that entirely and set `.env` once.
 
 ⚠️ **Workspace keys are encrypted with `APP_KEY`.** Rotating it without re-encrypting makes them unreadable — those workspaces fall back to the platform key, or to the built-in implementations, until someone re-enters theirs. Rotate deliberately, not incidentally.
 
