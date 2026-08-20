@@ -4,10 +4,13 @@ declare(strict_types=1);
 
 use App\Ai\AiRequest;
 use App\Ai\AiResponse;
-use App\Ai\Contracts\AiClient;
+use App\Ai\Contracts\ProviderDriver;
+use App\Ai\Credentials\ResolvedCredential;
+use App\Ai\Drivers\AnthropicDriver;
 use App\Enums\AiTask;
 use App\Models\AiInteraction;
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\Http;
 use Laravel\Sanctum\Sanctum;
 use Tests\Support\StudioFactory;
 
@@ -157,22 +160,28 @@ describe('observability', function (): void {
 });
 
 describe('degradation', function (): void {
-    it('serves an answer when the AI client throws', function (): void {
-        // Swap in a client that fails the way a real outage does.
-        $this->app->bind(App\Ai\Drivers\ClaudeClient::class, fn () => new class implements AiClient
+    it('serves an answer when the provider throws', function (): void {
+        // Swap in a driver that fails the way a real outage does.
+        $this->app->bind(AnthropicDriver::class, fn () => new class implements ProviderDriver
         {
             public function name(): string
             {
-                return 'claude';
+                return 'anthropic';
             }
 
             public function run(AiRequest $request): AiResponse
             {
-                throw new RuntimeException('API is down');
+                throw new RuntimeException('Provider is down');
+            }
+
+            public function call(AiRequest $request, ResolvedCredential $credential): AiResponse
+            {
+                throw new RuntimeException('Provider is down');
             }
         });
 
-        config()->set('ai.driver', 'claude');
+        config()->set('ai.driver', 'auto');
+        config()->set('ai.platform.api_key', 'sk-ant-platform-0000000000000000');
 
         $response = $this->postJson('/api/v1/ai/booking-assistant', [
             'text' => 'a haircut tomorrow morning',
@@ -190,14 +199,15 @@ describe('degradation', function (): void {
         expect(AiInteraction::query()->withoutTenantScope()->latest('id')->sole()->succeeded)->toBeFalse();
     });
 
-    it('stops calling the API once the monthly budget is spent', function (): void {
-        config()->set('ai.driver', 'claude');
+    it('stops calling the provider once the monthly budget is spent', function (): void {
+        config()->set('ai.driver', 'auto');
+        config()->set('ai.platform.api_key', 'sk-ant-platform-0000000000000000');
         config()->set('ai.monthly_budget_usd', 0.01);
 
         AiInteraction::query()->create([
             'tenant_id' => $this->studio->tenant->id,
             'task' => AiTask::BookingIntent,
-            'driver' => 'claude',
+            'driver' => 'anthropic',
             'model' => 'claude-opus-5',
             'cost_micros' => 50_000,          // $0.05, over the ceiling
             'succeeded' => true,
@@ -211,15 +221,45 @@ describe('degradation', function (): void {
             ->assertJsonPath('data.ai.degraded_reason', 'monthly_budget_reached');
     });
 
-    it('falls back when no API key is configured', function (): void {
+    it('does not enforce a ceiling it cannot measure', function (): void {
+        // The platform model here has no published rates, so every recorded
+        // cost is zero and the ceiling would never be reached. Enforcing it
+        // against a number that means "unmeasured" is worse than letting the
+        // calls through and saying spend is untracked.
         config()->set('ai.driver', 'auto');
-        config()->set('ai.claude.api_key', null);
+        config()->set('ai.platform.provider', 'openai');
+        config()->set('ai.platform.api_key', 'sk-openai-0000000000000000');
+        config()->set('ai.platform.model', 'gpt-5');
+        config()->set('ai.monthly_budget_usd', 0.01);
+
+        // Faked rather than reached: the provider is irrelevant here, only
+        // that the budget check let the call through.
+        Http::fake(['api.openai.com/*' => Http::response(status: 503)]);
 
         $this->postJson('/api/v1/ai/booking-assistant', [
             'text' => 'a haircut tomorrow',
             'tz' => 'Europe/Vienna',
         ], $this->headers)
             ->assertOk()
-            ->assertJsonPath('data.ai.degraded_reason', 'no_api_key');
+            // It got past the budget check and failed at the call instead,
+            // which is the point — the ceiling did not silently block it.
+            ->assertJsonPath('data.ai.degraded_reason', 'api_error');
+
+        // Two attempts, not one: the driver retries once on a 5xx before
+        // giving up, which is worth a 200ms wait when the alternative is
+        // degrading a booking page over a blip.
+        Http::assertSentCount(2);
+    });
+
+    it('falls back when no provider is connected', function (): void {
+        config()->set('ai.driver', 'auto');
+        config()->set('ai.platform.api_key', null);
+
+        $this->postJson('/api/v1/ai/booking-assistant', [
+            'text' => 'a haircut tomorrow',
+            'tz' => 'Europe/Vienna',
+        ], $this->headers)
+            ->assertOk()
+            ->assertJsonPath('data.ai.degraded_reason', 'no_credential');
     });
 });
